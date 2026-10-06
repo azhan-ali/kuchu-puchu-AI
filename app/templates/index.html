@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kuchu Puchu AI — Understand any video or meeting in minutes.</title>
+    <link rel="icon" type="image/jpeg" href="/static/img/logo.jpg">
+    
+    <!-- Cerebri Sans & Hand-drawn Typography -->
+    <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/cerebri-sans">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Kalam:wght@300;400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    
+    <!-- Mermaid JS -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'neutral',
+            suppressErrorRendering: true,
+            securityLevel: 'loose',
+            fontFamily: 'Cerebri Sans, sans-serif'
+        });
+    </script>
+</head>
+<body>
+
+    <!-- ========================================================
+         GLOBAL PAGE BACKGROUND LAYER — Organic Shapes & Arcs
+         Sits behind all content, fixed, z-index 0
+         ======================================================== -->
+    <div class="page-bg-layer" aria-hidden="true">
+        <svg class="page-bg-svg" viewBox="0 0 1440 900" fill="none" preserveAspectRatio="xMidYMid slice">
+            <!-- Large sweeping arc family — top-left to bottom-right, faint hand-drawn feel -->
+            <path d="M-80,420 C200,180 680,120 1520,380" stroke="#D8CEB8" stroke-width="0.9" stroke-dasharray="6,8" opacity="0.5"/>
+            <path d="M-80,480 C250,240 700,160 1520,450" stroke="#D8CEB8" stroke-width="0.7" stroke-dasharray="4,10" opacity="0.35"/>
+            <path d="M-80,380 C180,150 620,110 1520,320" stroke="#E2D8C4" stroke-width="1.1" opacity="0.28"/>
+
+            <!-- Gentle rising arc bottom-left -->
+            <path d="M-100,820 C300,600 800,500 1540,680" stroke="#C8BFAA" stroke-width="0.8" stroke-dasharray="3,7" opacity="0.3"/>
+
+            <!-- Dotted coordinate axis pair, upper center — like a textbook figure -->
+            <line x1="380" y1="60" x2="380" y2="280" stroke="#C6BCA8" stroke-width="0.8" stroke-dasharray="3,5" opacity="0.45"/>
+            <line x1="300" y1="180" x2="520" y2="180" stroke="#C6BCA8" stroke-width="0.8" stroke-dasharray="3,5" opacity="0.45"/>
+            <!-- Tiny axis arrows -->
+            <path d="M374,65 L380,56 L386,65" stroke="#C6BCA8" stroke-width="0.8" fill="none" opacity="0.45"/>
+            <path d="M515,174 L524,180 L515,186" stroke="#C6BCA8" stroke-width="0.8" fill="none" opacity="0.45"/>
+
+            <!-- Attention map / heatmap grid sketch — upper right corner, barely visible -->
+            <g opacity="0.18" transform="translate(1180, 55)">
+                <rect x="0"  y="0"  width="22" height="22" fill="#D4A017" rx="2"/>
+                <rect x="24" y="0"  width="22" height="22" fill="#B8860B" rx="2"/>
+                <rect x="48" y="0"  width="22" height="22" fill="#8B6914" rx="2"/>
+                <rect x="0"  y="24" width="22" height="22" fill="#C4920F" rx="2"/>
+                <rect x="24" y="24" width="22" height="22" fill="#E8C44A" rx="2"/>
+                <rect x="48" y="24" width="22" height="22" fill="#D4A017" rx="2"/>
+                <rect x="0"  y="48" width="22" height="22" fill="#7A5C10" rx="2"/>
+                <rect x="24" y="48" width="22" height="22" fill="#C4920F" rx="2"/>
+                <rect x="48" y="48" width="22" height="22" fill="#F0D060" rx="2"/>
+            </g>
+
+            <!-- Stylized sine / audio waveform — lower left, like a sound graph -->
+            <path d="M60,760 C80,740 90,780 110,760 C130,740 140,780 160,760 C180,740 190,780 210,760 C230,740 240,780 260,760 C280,740 290,780 310,760 C330,740 340,780 360,760 C380,740 390,780 410,760" 
+                  stroke="#A89878" stroke-width="1.2" fill="none" stroke-linecap="round" opacity="0.35"/>
+            <!-- Axis label for waveform -->
+
+            <!-- Diagonal faint rule lines (notebook paper feel, angled) -->
+            <line x1="0"    y1="900" x2="220"  y2="0"   stroke="#DDD5C0" stroke-width="0.5" opacity="0.18"/>
+            <line x1="220"  y1="900" x2="440"  y2="0"   stroke="#DDD5C0" stroke-width="0.5" opacity="0.18"/>
+            <line x1="1220" y1="900" x2="1440" y2="0"   stroke="#DDD5C0" stroke-width="0.5" opacity="0.18"/>
+
+            <!-- Soft blob: warm amber ellipse, upper-right area -->
+            <ellipse cx="1320" cy="110" rx="200" ry="120" fill="rgba(255,235,120,0.12)" />
+            <!-- Soft blob: lavender, lower-left -->
+            <ellipse cx="120"  cy="820" rx="180" ry="100" fill="rgba(210,195,255,0.09)" />
+            <!-- Soft blob: warm cream center -->
+            <ellipse cx="720"  cy="460" rx="340" ry="180" fill="rgba(255,248,220,0.07)" />
+
+            <!-- Small circle cluster — top-left, research notebook circles -->
+            <circle cx="88"  cy="135" r="36" stroke="#D5CCB8" stroke-width="0.9" fill="none" opacity="0.5" stroke-dasharray="4,5"/>
+            <circle cx="88"  cy="135" r="18" stroke="#D5CCB8" stroke-width="0.7" fill="none" opacity="0.4"/>
+            <line x1="52" y1="135" x2="124" y2="135" stroke="#D5CCB8" stroke-width="0.7" opacity="0.4"/>
+            <line x1="88"  y1="99"  x2="88"  y2="171" stroke="#D5CCB8" stroke-width="0.7" opacity="0.4"/>
+        </svg>
+    </div>
+
+    <!-- Top Navigation Bar — Compact, Balanced & Premium -->
+    <header class="top-nav-wrapper">
+        <nav class="navbar">
+            <!-- Brand Left: Clean Custom Hand-Drawn Logo + Brand Identity -->
+            <div class="nav-brand">
+                <a href="/" class="brand-link" aria-label="Kuchu Puchu AI Home">
+                    <div class="brand-logo-emblem" title="Kuchu Puchu AI — Cute Study Companion">
+                        <img src="/static/img/logo.jpg" alt="Kuchu Puchu AI Mascot Logo" class="brand-logo-img">
+                    </div>
+                    <div class="brand-text-col">
+                        <div class="brand-title-row">
+                            <span class="brand-title">Kuchu Puchu AI</span>
+                            <span class="brand-sparkle-badge" title="AI Knowledge Synthesizer">✦</span>
+                        </div>
+                        <span class="brand-tagline">video &amp; meeting study notebook</span>
+                    </div>
+                </a>
+            </div>
+
+            <!-- Segmented Center Navigation Pills: ONLY Home, Features, Video Summary -->
+            <div class="nav-center-pill">
+                <a href="#home" class="nav-pill-item active">Home</a>
+                <a href="#features" class="nav-pill-item">Features</a>
+                <a href="#summary-section" class="nav-pill-item" id="nav-summary-pill">Video Summary</a>
+            </div>
+
+            <!-- Right Actions: Refined High-Converting CTA + Dedicated AI Live Chip + Avatar (Zero Overlap) -->
+            <div class="nav-actions">
+                <!-- Yellow High-Converting CTA Button -->
+                <a href="#home" class="btn-quick-add" id="quick-add-btn">
+                    <svg class="cta-sparkle-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                    <span>Quick Add Video</span>
+                </a>
+
+                <!-- Dedicated AI Live Status Pill (Separate element, zero overlap) -->
+                <div class="nav-live-indicator" title="AI Local Whisper &amp; RAG Vector Store Live">
+                    <span class="status-pulse-dot"></span>
+                </div>
+
+                <!-- User Profile Avatar -->
+                <div class="nav-avatar-wrapper" title="Azhan's Workspace">
+                    <img src="/static/img/avatar.jpg" alt="User Profile" class="nav-avatar">
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Container -->
+    <main class="hero-page-wrapper">
+        
+        <!-- Hero Section with Math Doodles and Floating Input Card -->
+        <section id="home" class="hero-section">
+            
+            <!-- Background Mathematical Equations, Annotations & Doodles (Pixel Match to Reference) -->
+            <div class="hero-annotations-layer" aria-hidden="true">
+                <!-- Large arched coordinate curve in background -->
+                <svg class="bg-arc-curve" viewBox="0 0 1400 350" fill="none">
+                    <path d="M-50,220 C300,90 900,120 1450,240" stroke="#E2DAC8" stroke-width="1.2" stroke-dasharray="5,5"/>
+                    <path d="M-50,260 C350,140 850,80 1450,180" stroke="#ECE4D4" stroke-width="1"/>
+                </svg>
+
+                <!-- Left Side Math Annotations -->
+                <div class="math-note math-left-1">
+                    <span class="math-eq">∫ f(x) e<sup>-iωt</sup> dt</span>
+                </div>
+
+                <div class="math-note math-left-2">
+                    <span class="math-eq">∇ × E = -∂B/∂t</span>
+                </div>
+
+                <div class="math-note math-left-3">
+                    <div class="bracket-box">
+                        <span class="hand-line">eigenvalues λ<sub>i</sub> &gt; 0</span>
+                        <span class="hand-line">rank-nullity theorem</span>
+                    </div>
+                </div>
+
+                <div class="math-note math-left-4">
+                    <svg class="curly-arrow-down" width="30" height="26" viewBox="0 0 30 26" fill="none">
+                        <path d="M5,2 C12,12 18,16 22,22 M16,21 L22,22 L22,16" stroke="#7A7264" stroke-width="1.3" stroke-linecap="round"/>
+                    </svg>
+                    <span class="hand-script">whisper audio chunker</span>
+                </div>
+
+                <!-- Circular Crosshair coordinate on bottom left -->
+                <div class="math-note math-crosshair">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <circle cx="24" cy="24" r="18" stroke="#DCD4C2" stroke-width="1" stroke-dasharray="3,3"/>
+                        <line x1="24" y1="2" x2="24" y2="46" stroke="#D5CCC5" stroke-width="0.8"/>
+                        <line x1="2" y1="24" x2="46" y2="24" stroke="#D5CCC5" stroke-width="0.8"/>
+                    </svg>
+                </div>
+
+                <div class="math-note math-left-bottom">
+                    <span class="math-eq">∫<sub>0</sub><sup>∞</sup> e<sup>-x<sup>2</sup></sup> dx = √π / 2</span>
+                </div>
+
+                <!-- Right Side Math Annotations & Badges -->
+                <div class="math-note math-right-sticky">
+                    <div class="sticky-tape-tag">
+                        <span class="sticky-icon">🔥</span>
+                        <span class="sticky-text">1-click Obsidian / Notion sync</span>
+                    </div>
+                    <!-- Hand-drawn arrow pointing to sticky note -->
+                    <svg class="sketch-arrow-sticky" width="32" height="22" viewBox="0 0 32 22" fill="none">
+                        <path d="M28,18 C20,10 12,8 4,14 M6,7 L4,14 L12,15" stroke="#7A7264" stroke-width="1.2" stroke-linecap="round"/>
+                    </svg>
+                </div>
+
+                <div class="math-note math-right-1">
+                    <span class="math-eq">∑ P(x/θ) · log P</span>
+                    <span class="math-sub-eq">dθ/dt = -α ∇L(θ)</span>
+                </div>
+
+                <div class="math-note math-right-2">
+                    <span class="hand-script">← 0% hallucination citation</span>
+                </div>
+
+                <!-- Hand drawn notebook/diamond sketch icon -->
+                <div class="math-note math-right-icon">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7E8B4E" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                        <path d="M8 7h8 M8 11h5"></path>
+                    </svg>
+                </div>
+
+                <div class="math-note math-right-bottom">
+                    <span class="math-eq">σ(W<sup>T</sup> x + b) → <span class="hand-script-sm">activation flow</span></span>
+                </div>
+
+                <!-- Red corner tape tab at bottom right -->
+                <div class="corner-red-tab"></div>
+
+                <!-- ── NEW ANNOTATIONS ─────────────────────────────────── -->
+
+                <!-- Faint center-top: a barely-there distribution curve label -->
+                <div class="math-note math-center-top">
+                    <span class="math-eq-sm">P(x | μ, σ²) = 𝒩(x; μ, σ²)</span>
+                </div>
+
+                <!-- Mid-left: a short handwritten annotation with marker-style emphasis -->
+                <div class="math-note math-left-mid">
+                    <div class="bracket-box">
+                        <span class="hand-line">loss = -Σ yᵢ log(ŷᵢ)</span>
+                        <span class="hand-line">cross-entropy ↓</span>
+                    </div>
+                </div>
+
+                <!-- Left neural net sketch — three layers of nodes with connecting lines -->
+                <div class="math-note math-left-neural">
+                    <svg width="72" height="64" viewBox="0 0 72 64" fill="none">
+                        <!-- Layer 1 nodes -->
+                        <circle cx="8"  cy="16" r="4" stroke="#A09480" stroke-width="1.1"/>
+                        <circle cx="8"  cy="32" r="4" stroke="#A09480" stroke-width="1.1"/>
+                        <circle cx="8"  cy="48" r="4" stroke="#A09480" stroke-width="1.1"/>
+                        <!-- Layer 2 nodes -->
+                        <circle cx="36" cy="22" r="4" stroke="#7E8B4E" stroke-width="1.1"/>
+                        <circle cx="36" cy="42" r="4" stroke="#7E8B4E" stroke-width="1.1"/>
+                        <!-- Layer 3 node -->
+                        <circle cx="64" cy="32" r="5" stroke="#6B5E4A" stroke-width="1.3"/>
+                        <!-- Connections L1→L2 -->
+                        <line x1="12" y1="16" x2="32" y2="22" stroke="#C0B89A" stroke-width="0.8" opacity="0.7"/>
+                        <line x1="12" y1="32" x2="32" y2="22" stroke="#C0B89A" stroke-width="0.8" opacity="0.7"/>
+                        <line x1="12" y1="48" x2="32" y2="22" stroke="#C0B89A" stroke-width="0.8" opacity="0.7"/>
+                        <line x1="12" y1="16" x2="32" y2="42" stroke="#C0B89A" stroke-width="0.8" opacity="0.7"/>
+                        <line x1="12" y1="32" x2="32" y2="42" stroke="#C0B89A" stroke-width="0.8" opacity="0.7"/>
+                        <line x1="12" y1="48" x2="32" y2="42" stroke="#C0B89A" stroke-width="0.8" opacity="0.7"/>
+                        <!-- Connections L2→L3 -->
+                        <line x1="40" y1="22" x2="59" y2="32" stroke="#B0A888" stroke-width="0.9" opacity="0.75"/>
+                        <line x1="40" y1="42" x2="59" y2="32" stroke="#B0A888" stroke-width="0.9" opacity="0.75"/>
+                    </svg>
+                    <span class="hand-script" style="font-size:0.88rem; margin-top: 2px; display:block; color:#7B7460;">MLP forward pass</span>
+                </div>
+
+                <!-- Right-mid: matrix / tensor annotation -->
+                <div class="math-note math-right-mid">
+                    <span class="math-eq" style="font-size:1.05rem; opacity:0.7;">
+                        A<sup>T</sup>A = <span class="math-marked">UΣV<sup>T</sup></span>
+                    </span>
+                    <span class="math-eq-sm">SVD decomposition</span>
+                </div>
+
+                <!-- Right wave: stylized audio waveform + label -->
+                <div class="math-note math-right-wave">
+                    <svg width="92" height="32" viewBox="0 0 92 32" fill="none">
+                        <path d="M2,16 C6,8 9,24 13,16 C17,8 20,24 24,16 C28,8 31,24 35,16 C39,8 42,24 46,16 C50,8 53,24 57,16 C61,8 64,24 68,16 C72,8 75,24 79,16 C83,8 86,24 90,16"
+                              stroke="#8B7E66" stroke-width="1.3" stroke-linecap="round"/>
+                        <line x1="0" y1="16" x2="92" y2="16" stroke="#C0B4A0" stroke-width="0.6" stroke-dasharray="3,4" opacity="0.5"/>
+                    </svg>
+                    <span class="hand-script" style="font-size:0.85rem; display:block; text-align:right; color:#7A7060; margin-top:1px;">audio waveform ↑</span>
+                </div>
+
+                <!-- Video chapter scrubber doodle -->
+                <div class="math-note math-video-timeline">
+                    <svg width="118" height="20" viewBox="0 0 118 20" fill="none">
+                        <polygon points="2,10 7,7 7,13" fill="#6A604E"/>
+                        <line x1="12" y1="10" x2="114" y2="10" stroke="#B8AF9C" stroke-width="1.5" stroke-linecap="round"/>
+                        <circle cx="12" cy="10" r="2.5" fill="#6A604E"/>
+                        <circle cx="38" cy="10" r="2.5" fill="#7E8B4E"/>
+                        <circle cx="70" cy="10" r="2.5" fill="#C2881C"/>
+                        <circle cx="114" cy="10" r="2.5" fill="#6A604E"/>
+                    </svg>
+                    <span class="hand-script-sm" style="font-size:0.8rem; display:block; color:#7A705E; margin-top:1px;">00:00 ── chapters indexed ── 1:42:00</span>
+                </div>
+
+                <!-- Self-attention transformer synthesis notation -->
+                <div class="math-note math-transformer-sketch">
+                    <span class="math-eq-sm">Attn(Q,K,V) = softmax(QK<sup>T</sup>/√d<sub>k</sub>) V</span>
+                    <span class="hand-script-sm">self-attention synthesis</span>
+                </div>
+
+                <!-- Meeting Decision & Action Items margin box -->
+                <div class="math-note math-meeting-flow">
+                    <div class="bracket-box">
+                        <span class="hand-line">☑ decisions isolated</span>
+                        <span class="hand-line">☑ action items extracted</span>
+                        <span class="hand-line">☑ timestamp sync &lt;0.1s</span>
+                    </div>
+                </div>
+
+                <!-- Enhanced arc overlay — richer background sweep lines -->
+                <svg class="bg-arc-curve-2" viewBox="0 0 1400 400" fill="none" style="position:absolute;top:35%;left:0;width:100%;opacity:0.35;pointer-events:none;">
+                    <path d="M-60,260 C280,100 750,80 1460,280" stroke="#C8BEA8" stroke-width="1" stroke-dasharray="8,12"/>
+                    <path d="M-60,300 C320,150 800,130 1460,320" stroke="#D4CCBA" stroke-width="0.7"/>
+                    <!-- Small tick marks along the arc — like a ruler -->
+                    <line x1="200" y1="190" x2="205" y2="183" stroke="#C0B8A8" stroke-width="0.8"/>
+                    <line x1="400" y1="168" x2="405" y2="161" stroke="#C0B8A8" stroke-width="0.8"/>
+                    <line x1="600" y1="158" x2="605" y2="151" stroke="#C0B8A8" stroke-width="0.8"/>
+                    <line x1="800" y1="160" x2="805" y2="153" stroke="#C0B8A8" stroke-width="0.8"/>
+                    <line x1="1000" y1="176" x2="1005" y2="169" stroke="#C0B8A8" stroke-width="0.8"/>
+                    <line x1="1200" y1="204" x2="1205" y2="197" stroke="#C0B8A8" stroke-width="0.8"/>
+                </svg>
+
+            </div>
+
+            <!-- Hero Typography Header -->
+            <div class="hero-content">
+                <h1 class="hero-title">
+                    Understand any video or meeting in <span class="marker-highlight">minutes.</span>
+                </h1>
+
+                <p class="hero-description">
+                    Skip the 2-hour recording. Paste any YouTube lecture, podcast, or team sync to get structured archival notes, visual mind maps, and verified timestamped takeaways in seconds.
+                </p>
+
+                <!-- Hand-Drawn Notebook Pipeline Schematic: Video/Meeting -> AI Synthesis -> Archival Folio -->
+                <div class="hero-pipeline-strip" aria-label="Audio to notebook synthesis pipeline">
+                    <div class="pipeline-step">
+                        <span class="pipeline-badge-icon">🎬</span>
+                        <div class="pipeline-step-meta">
+                            <span class="step-title">Raw Recording</span>
+                            <span class="step-sub">120 min video or sync</span>
+                        </div>
+                    </div>
+                    
+                    <div class="pipeline-connector">
+                        <svg class="pipeline-arrow-svg" width="34" height="14" viewBox="0 0 34 14" fill="none">
+                            <path d="M2,7 C12,3 20,3 30,7 M24,3 L30,7 L24,11" stroke="#8C8270" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span class="connector-label">neural chunking</span>
+                    </div>
+
+                    <div class="pipeline-step">
+                        <span class="pipeline-badge-icon">⚡</span>
+                        <div class="pipeline-step-meta">
+                            <span class="step-title">AI Notebook Engine</span>
+                            <span class="step-sub">Whisper + RAG synthesis</span>
+                        </div>
+                    </div>
+
+                    <div class="pipeline-connector">
+                        <svg class="pipeline-arrow-svg" width="34" height="14" viewBox="0 0 34 14" fill="none">
+                            <path d="M2,7 C12,3 20,3 30,7 M24,3 L30,7 L24,11" stroke="#8C8270" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span class="connector-label">zero-hallucination</span>
+                    </div>
+
+                    <div class="pipeline-step step-highlight">
+                        <span class="pipeline-badge-icon">📓</span>
+                        <div class="pipeline-step-meta">
+                            <span class="step-title">Archival Folio</span>
+                            <span class="step-sub">Read in 3 minutes ↗</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Floating Input Card with Masking Tapes & Binder Clip -->
+            <div class="input-card-container">
+                <!-- Washi Tape: Top-Left (Lavender) -->
+                <div class="washi-tape washi-lavender"></div>
+                <!-- Binder Clip: Center -->
+                <div class="binder-clip-handle">
+                    <span class="clip-slot"></span>
+                </div>
+                <!-- Washi Tape: Top-Right (Butter Yellow) -->
+                <div class="washi-tape washi-yellow"></div>
+
+                <!-- Main White Card -->
+                <div class="hero-input-card">
+                    
+                    <!-- Card Top Controls Row -->
+                    <div class="card-controls-row">
+                        <!-- Segmented Tab Switcher -->
+                        <div class="tabs-segmented">
+                            <button type="button" class="tab-btn active" data-tab="url" id="tab-btn-url">
+                                <svg class="tab-icon yt-red" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                                </svg>
+                                <span>YouTube &amp; Media URL</span>
+                            </button>
+                            <button type="button" class="tab-btn" data-tab="file" id="tab-btn-file">
+                                <svg class="tab-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                                </svg>
+                                <span>Audio &amp; Meeting Files</span>
+                            </button>
+                        </div>
+
+                        <!-- Target Persona / Engine Selector -->
+                        <div class="persona-selector-box">
+                            <span class="persona-label">Target Persona:</span>
+                            <div class="select-wrapper">
+                                <select id="language" class="persona-select">
+                                    <option value="english" selected>Student Lecture Mode ⌄</option>
+                                    <option value="hinglish">Executive Sync Mode (Hinglish) ⌄</option>
+                                    <option value="english">Deep Research Folio ⌄</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Input Form Component -->
+                    <form id="process-form" class="hero-process-form">
+                        
+                        <!-- TAB 1: URL Input Row -->
+                        <div class="tab-content active" id="tab-url">
+                            <div class="input-pill-group">
+                                <div class="input-icons-lead">
+                                    <!-- Paragraph lines icon -->
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7A7264" stroke-width="2.2" stroke-linecap="round">
+                                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                                        <line x1="3" y1="12" x2="15" y2="12"></line>
+                                        <line x1="3" y1="18" x2="18" y2="18"></line>
+                                    </svg>
+                                    <!-- Link/clip icon -->
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7A7264" stroke-width="2.2" stroke-linecap="round">
+                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                                    </svg>
+                                </div>
+
+                                <input 
+                                    type="text" 
+                                    id="youtube-url" 
+                                    class="url-text-input" 
+                                    placeholder="Paste your YouTube video link here…" 
+                                    autocomplete="off"
+                                >
+
+                                <button type="button" class="btn-paste-pill" id="btn-paste" title="Paste URL from clipboard">
+                                    <span>paste</span> 📋
+                                </button>
+
+                                <button type="submit" class="btn-hero-analyze" id="submit-btn">
+                                    <span>Analyze Video</span>
+                                    <svg class="sparkle-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- TAB 2: Audio / File Upload Row -->
+                        <div class="tab-content" id="tab-file">
+                            <div class="file-upload-container">
+                                <label class="file-dropzone" for="local-file">
+                                    <div class="dropzone-inner">
+                                        <svg class="upload-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#686154" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                            <polyline points="17 8 12 3 7 8"></polyline>
+                                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                                        </svg>
+                                        <p class="dropzone-text">
+                                            <strong>Click to browse</strong> or drag and drop MP4, WAV, MP3, M4A
+                                        </p>
+                                        <div id="file-name-display" class="file-name-pill"></div>
+                                    </div>
+                                    <input type="file" id="local-file" accept="audio/*,video/*" class="file-hidden-input">
+                                </label>
+                                <button type="submit" class="btn-hero-analyze file-analyze-btn" id="submit-file-btn">
+                                    <span>Analyze File</span>
+                                    <svg class="sparkle-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- Bottom Curated Demo Notebooks Row -->
+                    <div class="curated-demos-row">
+                        <span class="demos-prompt">Try curated demo notebooks:</span>
+                        <div class="demo-chips-list">
+                            <button type="button" class="demo-chip chip-mit" data-url="https://www.youtube.com/watch?v=ZK3O402wf1c" data-title="MIT 18.06: Linear Algebra & SVD">
+                                <span class="chip-badge-icon">🎓</span>
+                                <span>MIT 18.06: Linear Algebra &amp; SVD ↗</span>
+                            </button>
+                            <button type="button" class="demo-chip chip-stripe" data-url="https://www.youtube.com/watch?v=2eWuYf-aZE4" data-title="Stripe Q3 Infrastructure Retrospective">
+                                <span class="chip-badge-icon">💼</span>
+                                <span>Stripe Q3 Infrastructure Retrospective ↗</span>
+                            </button>
+                            <button type="button" class="demo-chip chip-stanford" data-url="https://www.youtube.com/watch?v=kCc8FmEb1nY" data-title="Stanford Neuroscience on Dopamine">
+                                <span class="chip-badge-icon">🧠</span>
+                                <span>Stanford Neuroscience on Dopamine ↗</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Subtle Notebook Footer Strip -->
+                    <div class="card-notebook-footer">
+                        <div class="footer-stamp-left">
+                            <span class="notebook-feather-icon">✏️</span>
+                            <span class="notebook-folio-stamp">Archival Study Folio • Verifiable Source Timestamps</span>
+                        </div>
+                        <div class="footer-stamp-right">
+                            <span class="notebook-export-pill">Obsidian &amp; PDF Ready ↗</span>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+        <!-- ========================================================
+             KUCHU PUCHU AI STUDY BUS — DYNAMIC LOADING & PROGRESS
+             Hand-drawn sketch + paper aesthetic, real-time pipeline stops
+             ======================================================== -->
+        <section id="loading-section" class="hidden">
+            <div class="study-bus-loading-container">
+                
+                <!-- Sketch Washi Tape Header -->
+                <div class="bus-washi-tape" aria-hidden="true">
+                    <span>★ KUCHU PUCHU AI • STUDY BUS EXPRESS ★</span>
+                </div>
+
+                <!-- Card Header -->
+                <div class="bus-screen-header">
+                    <div class="bus-header-left">
+                        <div class="bus-badge-tag">
+                            <span class="bus-tag-dot"></span>
+                            <span>LIVE PIPELINE ACTIVE</span>
+                        </div>
+                        <h2 class="bus-main-title">Kuchu Puchu AI Study Bus is on the Road! 🚌</h2>
+                        <p class="bus-subtitle">
+                            Packing your video lecture into smart summaries, mind maps &amp; practice quiz notes.
+                        </p>
+                    </div>
+                    <div class="bus-header-stats">
+                        <div class="stat-pill">
+                            <span class="stat-icon">⏱️</span>
+                            <span class="stat-label">Elapsed:</span>
+                            <span class="stat-val" id="bus-elapsed-time">00:00</span>
+                        </div>
+                        <div class="stat-pill stat-cargo">
+                            <span class="stat-icon">🎒</span>
+                            <span class="stat-label">Bus Cargo:</span>
+                            <span class="stat-val"><strong id="bus-luggage-counter">0</strong>/9 Packed</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Center Animation Stage: The Bus, Speech Bubble & Road -->
+                <div class="bus-scene-stage">
+                    
+                    <!-- Speech / Thought Bubble from Driver Mascot -->
+                    <div class="mascot-speech-bubble" id="mascot-speech-bubble">
+                        <div class="bubble-sparkle">✦</div>
+                        <div class="bubble-content">
+                            <div class="bubble-lead" id="bubble-lead">Honk honk! Engine started!</div>
+                            <div class="bubble-detail" id="bubble-detail">Starting audio/video extraction for your lecture...</div>
+                        </div>
+                        <div class="bubble-pointer"></div>
+                    </div>
+
+                    <!-- Bus Scenery Frame -->
+                    <div class="bus-vehicle-viewport" id="bus-vehicle-viewport">
+                        
+                        <!-- Floating Background Elements: Math Doodles & Clouds -->
+                        <div class="scenery-clouds" aria-hidden="true">
+                            <span class="cloud-item c-1">☁️</span>
+                            <span class="cloud-item c-2">☁️</span>
+                            <span class="cloud-item c-3">✦</span>
+                            <span class="cloud-item c-4">∫ e<sup>-x</sup></span>
+                        </div>
+
+                        <!-- The Animated Study Bus Unit -->
+                        <div class="study-bus-unit" id="study-bus-unit">
+                            <!-- Exhaust Smoke Puffs -->
+                            <div class="exhaust-group" aria-hidden="true">
+                                <span class="exhaust-puff puff-1">○</span>
+                                <span class="exhaust-puff puff-2">◌</span>
+                                <span class="exhaust-puff puff-3">☁️</span>
+                            </div>
+
+                            <!-- Headlight Glow Beam -->
+                            <div class="headlight-beam" aria-hidden="true"></div>
+
+                            <!-- Bus Illustration Artwork -->
+                            <div class="bus-artwork-frame">
+                                <img src="/static/img/kuchu_puchu_bus.jpg" alt="Kuchu Puchu AI Study Bus" class="bus-artwork-img" id="bus-artwork-img">
+                                <div class="bus-speed-lines" aria-hidden="true">
+                                    <span></span><span></span><span></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Hand-Drawn Moving Roadbed -->
+                        <div class="sketch-roadbed">
+                            <div class="road-surface"></div>
+                            <div class="road-dashes" id="road-dashes"></div>
+                            <div class="road-curb-top"></div>
+                            <div class="road-curb-bottom"></div>
+                        </div>
+
+                    </div>
+
+                    <!-- Visual Bus Luggage Bay / Cargo Rack (Shows items packed into bus) -->
+                    <div class="bus-cargo-bay-card">
+                        <div class="cargo-bay-header">
+                            <div class="cargo-bay-title">
+                                <span class="cargo-icon">🧳</span>
+                                <strong>Bus Roof &amp; Luggage Rack</strong>
+                                <span class="cargo-subtitle">(Completed tasks loaded into study bus)</span>
+                            </div>
+                            <span class="cargo-capacity-tag" id="cargo-status-tag">0 / 9 Loaded</span>
+                        </div>
+                        <div class="cargo-slots-grid" id="cargo-slots-grid">
+                            <div class="cargo-slot" data-slot="1" id="cargo-slot-audio" title="Audio / Video Track">
+                                <span class="slot-icon">🎧</span>
+                                <span class="slot-label">Audio</span>
+                                <span class="slot-mark">○</span>
+                            </div>
+                            <div class="cargo-slot" data-slot="2" id="cargo-slot-whisper" title="Whisper Transcript">
+                                <span class="slot-icon">🎙️</span>
+                                <span class="slot-label">Transcript</span>
+                                <span class="slot-mark">○</span>
+                            </div>
+                            <div class="cargo-slot" data-slot="3" id="cargo-slot-summary" title="Lecture Summary">
+                                <span class="slot-icon">📝</span>
+                                <span class="slot-label">Summary</span>
+                                <span class="slot-mark">○</span>
+                            </div>
+                            <div class="cargo-slot" data-slot="4" id="cargo-slot-embedding" title="Semantic Embeddings">
+                                <span class="slot-icon">🧩</span>
+                                <span class="slot-label">Vectors</span>
+                                <span class="slot-mark">○</span>
+                            </div>
+                            <div class="cargo-slot" data-slot="5" id="cargo-slot-mindmap" title="Mermaid Mind Map">
+                                <span class="slot-icon">🧠</span>
+                                <span class="slot-label">Mind Map</span>
+                                <span class="slot-mark">○</span>
+                            </div>
+                            <div class="cargo-slot" data-slot="6" id="cargo-slot-flowchart" title="Process Flowchart">
+                                <span class="slot-icon">⚡</span>
+                                <span class="slot-label">Flowchart</span>
+                                <span class="slot-mark">○</span>
+                            </div>
+                            <div class="cargo-slot" data-slot="7" id="cargo-slot-mcq" title="Practice Quiz MCQs">
+                                <span class="slot-icon">🎯</span>
+                                <span class="slot-label">MCQ Quiz</span>
+                                <span class="slot-mark">○</span>
+                            </div>
+                            <div class="cargo-slot" data-slot="8" id="cargo-slot-rag" title="RAG Chatbot Companion">
+                                <span class="slot-icon">💬</span>
+                                <span class="slot-label">RAG Buddy</span>
+                                <span class="slot-mark">○</span>
+                            </div>
+                            <div class="cargo-slot" data-slot="9" id="cargo-slot-final" title="Complete Study Folio">
+                                <span class="slot-icon">✨</span>
+                                <span class="slot-label">Folio</span>
+                                <span class="slot-mark">○</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Ruler-Style Milestone Progress Bar -->
+                <div class="bus-milestone-bar-wrapper">
+                    <div class="milestone-label-row">
+                        <span class="milestone-title">
+                            <span class="pen-icon">✏️</span>
+                            Route Completion
+                        </span>
+                        <div class="milestone-percent-wrap">
+                            <span class="milestone-percent-num" id="bus-progress-pct">0%</span>
+                        </div>
+                    </div>
+                    <div class="bus-ruler-track">
+                        <div class="bus-ruler-fill" id="bus-progress-fill" style="width: 5%;">
+                            <div class="ruler-bus-marker" id="ruler-bus-marker">🚌</div>
+                        </div>
+                        <div class="ruler-ticks" aria-hidden="true">
+                            <span></span><span></span><span></span><span></span><span></span>
+                            <span></span><span></span><span></span><span></span><span></span>
+                        </div>
+                    </div>
+                    <!-- Hidden legacy class for fallback safety -->
+                    <div class="progress-bar-container hidden"><div class="progress-fill"></div></div>
+                </div>
+
+                <!-- The 9 Route Stops (Pipeline Tasks Grid) -->
+                <div class="pipeline-stops-section">
+                    <div class="stops-section-header">
+                        <h3 class="stops-title">Study Route Stops &amp; Active Tasks</h3>
+                        <span class="stops-note">Real-time status synced with AI engine</span>
+                    </div>
+
+                    <div class="stops-grid" id="pipeline-stops-grid">
+                        
+                        <!-- Stop 1: Processing audio/video -->
+                        <div class="stop-card active" id="task-audio" data-task="audio">
+                            <div class="stop-num-badge">1</div>
+                            <div class="stop-icon-box">🎧</div>
+                            <div class="stop-info">
+                                <div class="stop-name-row">
+                                    <h4 class="stop-name">Processing audio/video</h4>
+                                    <span class="stop-status-chip active-chip" id="chip-audio">
+                                        <span class="chip-gear-spin">⚙️</span>
+                                        <span>Working...</span>
+                                    </span>
+                                </div>
+                                <p class="stop-desc">Extracting audio track &amp; slicing optimal chunks</p>
+                                <div class="stop-detail-text" id="detail-audio">Preparing audio input...</div>
+                            </div>
+                            <div class="stop-check-box" id="check-audio">○</div>
+                        </div>
+
+                        <!-- Stop 2: Transcribing with Whisper -->
+                        <div class="stop-card pending" id="task-whisper" data-task="whisper">
+                            <div class="stop-num-badge">2</div>
+                            <div class="stop-icon-box">🎙️</div>
+                            <div class="stop-info">
+                                <div class="stop-name-row">
+                                    <h4 class="stop-name">Transcribing with Whisper</h4>
+                                    <span class="stop-status-chip pending-chip" id="chip-whisper">
+                                        <span>⏳ In line</span>
+                                    </span>
+                                </div>
+                                <p class="stop-desc">Speech recognition, phonetic alignment &amp; text</p>
+                                <div class="stop-detail-text" id="detail-whisper">Awaiting previous stop...</div>
+                            </div>
+                            <div class="stop-check-box" id="check-whisper">○</div>
+                        </div>
+
+                        <!-- Stop 3: Creating the summary -->
+                        <div class="stop-card pending" id="task-summary" data-task="summary">
+                            <div class="stop-num-badge">3</div>
+                            <div class="stop-icon-box">📝</div>
+                            <div class="stop-info">
+                                <div class="stop-name-row">
+                                    <h4 class="stop-name">Creating the summary</h4>
+                                    <span class="stop-status-chip pending-chip" id="chip-summary">
+                                        <span>⏳ In line</span>
+                                    </span>
+                                </div>
+                                <p class="stop-desc">Synthesizing comprehensive meeting &amp; lecture takeaways</p>
+                                <div class="stop-detail-text" id="detail-summary">Awaiting transcript...</div>
+                            </div>
+                            <div class="stop-check-box" id="check-summary">○</div>
+                        </div>
+
+                        <!-- Stop 4: Splitting & embedding content -->
+                        <div class="stop-card pending" id="task-embedding" data-task="embedding">
+                            <div class="stop-num-badge">4</div>
+                            <div class="stop-icon-box">🧩</div>
+                            <div class="stop-info">
+                                <div class="stop-name-row">
+                                    <h4 class="stop-name">Splitting &amp; embedding content</h4>
+                                    <span class="stop-status-chip pending-chip" id="chip-embedding">
+                                        <span>⏳ In line</span>
+                                    </span>
+                                </div>
+                                <p class="stop-desc">Semantic chunking and Chroma vector indexing</p>
+                                <div class="stop-detail-text" id="detail-embedding">Awaiting transcript...</div>
+                            </div>
+                            <div class="stop-check-box" id="check-embedding">○</div>
+                        </div>
+
+                        <!-- Stop 5: Building the Mind Map -->
+                        <div class="stop-card pending" id="task-mindmap" data-task="mindmap">
+                            <div class="stop-num-badge">5</div>
+                            <div class="stop-icon-box">🧠</div>
+                            <div class="stop-info">
+                                <div class="stop-name-row">
+                                    <h4 class="stop-name">Building the Mind Map</h4>
+                                    <span class="stop-status-chip pending-chip" id="chip-mindmap">
+                                        <span>⏳ In line</span>
+                                    </span>
+                                </div>
+                                <p class="stop-desc">Structuring concept taxonomy &amp; Mermaid diagram</p>
+                                <div class="stop-detail-text" id="detail-mindmap">Awaiting synthesis...</div>
+                            </div>
+                            <div class="stop-check-box" id="check-mindmap">○</div>
+                        </div>
+
+                        <!-- Stop 6: Building the Process Flowchart -->
+                        <div class="stop-card pending" id="task-flowchart" data-task="flowchart">
+                            <div class="stop-num-badge">6</div>
+                            <div class="stop-icon-box">⚡</div>
+                            <div class="stop-info">
+                                <div class="stop-name-row">
+                                    <h4 class="stop-name">Building the Process Flowchart</h4>
+                                    <span class="stop-status-chip pending-chip" id="chip-flowchart">
+                                        <span>⏳ In line</span>
+                                    </span>
+                                </div>
+                                <p class="stop-desc">Extracting chronological steps and decision paths</p>
+                                <div class="stop-detail-text" id="detail-flowchart">Awaiting synthesis...</div>
+                            </div>
+                            <div class="stop-check-box" id="check-flowchart">○</div>
+                        </div>
+
+                        <!-- Stop 7: Generating MCQs -->
+                        <div class="stop-card pending" id="task-mcq" data-task="mcq">
+                            <div class="stop-num-badge">7</div>
+                            <div class="stop-icon-box">🎯</div>
+                            <div class="stop-info">
+                                <div class="stop-name-row">
+                                    <h4 class="stop-name">Generating MCQs</h4>
+                                    <span class="stop-status-chip pending-chip" id="chip-mcq">
+                                        <span>⏳ In line</span>
+                                    </span>
+                                </div>
+                                <p class="stop-desc">Practice quiz generation with options &amp; explanations</p>
+                                <div class="stop-detail-text" id="detail-mcq">Awaiting synthesis...</div>
+                            </div>
+                            <div class="stop-check-box" id="check-mcq">○</div>
+                        </div>
+
+                        <!-- Stop 8: Preparing the RAG chatbot -->
+                        <div class="stop-card pending" id="task-rag" data-task="rag">
+                            <div class="stop-num-badge">8</div>
+                            <div class="stop-icon-box">💬</div>
+                            <div class="stop-info">
+                                <div class="stop-name-row">
+                                    <h4 class="stop-name">Preparing the RAG chatbot</h4>
+                                    <span class="stop-status-chip pending-chip" id="chip-rag">
+                                        <span>⏳ In line</span>
+                                    </span>
+                                </div>
+                                <p class="stop-desc">Connecting vector retriever to conversational buddy</p>
+                                <div class="stop-detail-text" id="detail-rag">Awaiting vector store...</div>
+                            </div>
+                            <div class="stop-check-box" id="check-rag">○</div>
+                        </div>
+
+                        <!-- Stop 9: Finalizing results -->
+                        <div class="stop-card pending" id="task-final" data-task="final">
+                            <div class="stop-num-badge">9</div>
+                            <div class="stop-icon-box">✨</div>
+                            <div class="stop-info">
+                                <div class="stop-name-row">
+                                    <h4 class="stop-name">Finalizing results</h4>
+                                    <span class="stop-status-chip pending-chip" id="chip-final">
+                                        <span>⏳ In line</span>
+                                    </span>
+                                </div>
+                                <p class="stop-desc">Packaging all study notes and preparing workspace</p>
+                                <div class="stop-detail-text" id="detail-final">Final stop...</div>
+                            </div>
+                            <div class="stop-check-box" id="check-final">○</div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Footer Note -->
+                <div class="bus-loading-footer">
+                    <span class="bus-footer-icon">🍃</span>
+                    <span class="bus-footer-text">
+                        Kuchu Puchu AI is running Whisper, semantic embeddings, and LLM reasoning locally &amp; in real-time.
+                    </span>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Results Workspace — Redesigned Open Paper Layout -->
+        <section id="workspace" class="workspace-container hidden">
+            
+            <!-- ========================================================
+                 REDESIGNED SUMMARY SECTION (Warm Yellow/Cream Sketch Card)
+                 ======================================================== -->
+            <section class="summary-card-section" id="summary-section">
+                <div class="summary-card">
+                    <!-- Subtle sketch washi tape accent -->
+                    <div class="summary-washi-tape" aria-hidden="true"></div>
+
+                    <!-- Summary Card Header: Title Left, ONLY 2 Actions Right -->
+                    <div class="summary-card-header">
+                        <div class="summary-title-col">
+                            <h1 id="result-title" class="summary-main-title">Meeting &amp; Lecture Summary</h1>
+                        </div>
+                        <div class="summary-actions-col">
+                            <button type="button" class="btn-summary-action btn-print-action" id="btn-print-notes" title="Generate and download formatted PDF">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                                    <rect x="6" y="14" width="12" height="8"></rect>
+                                </svg>
+                                <span class="btn-text">Print Notes</span>
+                            </button>
+                            <a href="#chat-section" class="btn-summary-action btn-buddy-action" id="btn-ask-buddy">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                                </svg>
+                                <span>Ask Study Buddy</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Summary Body -->
+                    <div class="summary-card-body">
+                        <div id="result-summary" class="markdown-body summary-card-markdown"></div>
+                    </div>
+                </div>
+
+                <!-- 3-Column Clean Takeaways (Action Items, Decisions, Questions) -->
+                <div class="takeaways-trio-row">
+                    <!-- Action Items -->
+                    <div class="takeaway-col action-items-col">
+                        <div class="takeaway-header">
+                            <span class="takeaway-badge-icon">✅</span>
+                            <div class="takeaway-title-group">
+                                <h3 class="takeaway-heading">Action Items &amp; Owners</h3>
+                                <span class="takeaway-hand-sub hand-script">Who committed to what &amp; deadlines</span>
+                            </div>
+                        </div>
+                        <div id="result-action-items" class="markdown-body takeaway-body"></div>
+                    </div>
+
+                    <!-- Key Decisions -->
+                    <div class="takeaway-col decisions-col">
+                        <div class="takeaway-header">
+                            <span class="takeaway-badge-icon">🎯</span>
+                            <div class="takeaway-title-group">
+                                <h3 class="takeaway-heading">Key Decisions &amp; Outcomes</h3>
+                                <span class="takeaway-hand-sub hand-script">Consensus &amp; strategic rulings</span>
+                            </div>
+                        </div>
+                        <div id="result-decisions" class="markdown-body takeaway-body"></div>
+                    </div>
+
+                    <!-- Open Questions -->
+                    <div class="takeaway-col questions-col">
+                        <div class="takeaway-header">
+                            <span class="takeaway-badge-icon">❓</span>
+                            <div class="takeaway-title-group">
+                                <h3 class="takeaway-heading">Open Questions &amp; Risks</h3>
+                                <span class="takeaway-hand-sub hand-script">Unanswered follow-ups</span>
+                            </div>
+                        </div>
+                        <div id="result-questions" class="markdown-body takeaway-body"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Hand-drawn Divider Doodle -->
+            <div class="sketch-section-divider" aria-hidden="true">
+                <svg viewBox="0 0 1200 36" fill="none" class="sketch-divider-svg">
+                    <path d="M10,18 C150,5 300,32 460,16 C620,2 780,34 940,16 C1060,4 1140,26 1190,18" stroke="#D8CEB8" stroke-width="1.8" stroke-dasharray="6,8"/>
+                </svg>
+                <span class="divider-hand-badge">✦ Visual Knowledge Topology ✦</span>
+            </div>
+
+            <!-- ========================================================
+                 SECTION 2: MIND MAP + PROCESS FLOWCHART (Side-by-side)
+                 ======================================================== -->
+            <section class="results-section diagrams-dual-section" id="diagrams-section">
+                <div class="section-kicker-bar">
+                    <span class="kicker-tag">✦ VISUAL SYNTHESIS &amp; LOGIC ✦</span>
+                    <span class="kicker-hand-note hand-script">Hierarchical mind maps &amp; sequential process flow</span>
+                </div>
+
+                <div class="diagrams-dual-grid">
+                    <!-- Left: Mind Map -->
+                    <div class="diagram-cell" id="mindmap-cell">
+                        <div class="diagram-cell-header">
+                            <div class="diagram-cell-title-col">
+                                <div class="cell-title-row">
+                                    <span class="cell-icon">🧠</span>
+                                    <h3 class="cell-heading">Knowledge Graph &amp; Mind Map</h3>
+                                </div>
+                                <span class="cell-subscript hand-script">Hierarchical node taxonomy &amp; sub-topics</span>
+                            </div>
+                            <div class="diagram-cell-actions">
+                                <button type="button" class="btn-copy-mermaid" data-target="result-mind-map" title="Copy Mermaid syntax">
+                                    <span>Copy Syntax</span> 📋
+                                </button>
+                            </div>
+                        </div>
+                        <div class="diagram-canvas-wrapper" id="mind-map-container">
+                            <pre class="mermaid" id="result-mind-map"></pre>
+                        </div>
+                    </div>
+
+                    <!-- Right: Process Flowchart -->
+                    <div class="diagram-cell" id="flowchart-cell">
+                        <div class="diagram-cell-header">
+                            <div class="diagram-cell-title-col">
+                                <div class="cell-title-row">
+                                    <span class="cell-icon">🔀</span>
+                                    <h3 class="cell-heading">Process &amp; Logical Flowchart</h3>
+                                </div>
+                                <span class="cell-subscript hand-script">Chronological steps, causes &amp; decisions</span>
+                            </div>
+                            <div class="diagram-cell-actions">
+                                <button type="button" class="btn-copy-mermaid" data-target="result-flowchart" title="Copy Mermaid syntax">
+                                    <span>Copy Syntax</span> 📋
+                                </button>
+                            </div>
+                        </div>
+                        <div class="diagram-canvas-wrapper" id="flowchart-container">
+                            <pre class="mermaid" id="result-flowchart"></pre>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Hand-drawn Divider Doodle -->
+            <div class="sketch-section-divider" aria-hidden="true">
+                <svg viewBox="0 0 1200 36" fill="none" class="sketch-divider-svg">
+                    <path d="M10,18 C180,34 360,6 540,24 C720,38 900,4 1080,24 1150,14 1190,18" stroke="#D8CEB8" stroke-width="1.8" stroke-dasharray="6,8"/>
+                </svg>
+                <span class="divider-hand-badge">✦ Active Recall &amp; Knowledge Testing ✦</span>
+            </div>
+
+            <!-- ========================================================
+                 SECTION 3: QUIZ / ACTIVE RECALL SECTION
+                 ======================================================== -->
+            <section class="quiz-card-section" id="quiz-section">
+                <div class="quiz-paper-card">
+                    <!-- Subtle sketch washi tape accent -->
+                    <div class="quiz-washi-tape" aria-hidden="true"></div>
+
+                    <!-- Main Quiz Title ONLY -->
+                    <div class="quiz-card-header-main">
+                        <h2 class="quiz-headline">
+                            Kuchu Puchu Padh Liya ho to… Ab Test Bhi Kar Lo! 🧠
+                        </h2>
+                    </div>
+
+                    <!-- Dynamic MCQ Container -->
+                    <div id="result-quiz" class="quiz-cards-container">
+                        <!-- Populated dynamically by app.js with interactive options & instant feedback -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Hand-drawn Divider Doodle -->
+            <div class="sketch-section-divider" aria-hidden="true">
+                <svg viewBox="0 0 1200 36" fill="none" class="sketch-divider-svg">
+                    <path d="M10,18 C120,4 280,34 460,18 C640,4 820,34 1000,16 C1120,28 1190,18" stroke="#D8CEB8" stroke-width="1.8" stroke-dasharray="6,8"/>
+                </svg>
+                <span class="divider-hand-badge">✦ Semantic Vector Co-Pilot ✦</span>
+            </div>
+
+            <!-- ========================================================
+                 SECTION 4: RAG CHATBOT SECTION
+                 ======================================================== -->
+            <section class="results-section rag-chatbot-section" id="chat-section">
+                <div class="chat-paper-card">
+                    <!-- Subtle sketch washi tape accent -->
+                    <div class="chat-washi-tape" aria-hidden="true"></div>
+
+                    <!-- Main Chat Title ONLY -->
+                    <div class="chat-card-header-main">
+                        <h2 class="rag-headline">
+                            Kuchu Puchu ChatBOT — Ask Deeper About This Video / Meeting 🧠
+                        </h2>
+                    </div>
+
+                    <!-- ChatGPT-style Clean Conversation Container -->
+                    <div class="rag-chat-wrapper">
+                        <!-- Chat Message Stream -->
+                        <div id="chat-history" class="rag-messages-stream">
+                            <div class="chat-speech-bubble bot-speech-bubble welcome-bubble">
+                                <div class="speech-avatar">🤖</div>
+                                <div class="speech-body">
+                                    <div class="speech-header-row">
+                                        <span class="speech-author">Kuchu Puchu AI</span>
+                                    </div>
+                                    <div class="speech-text markdown-body">
+                                        <p>Hello! I've indexed this video transcript into my local vector database. You can ask me anything about the content, specific timestamps, or concepts!</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chat Composer Form (ChatGPT Style) -->
+                        <form id="chat-form" class="rag-composer-box">
+                            <div class="composer-input-row">
+                                <input 
+                                    type="text" 
+                                    id="chat-input" 
+                                    class="composer-text-input" 
+                                    placeholder="Ask anything about this video or meeting..." 
+                                    required 
+                                    autocomplete="off"
+                                >
+                                <button type="submit" class="btn-composer-submit" id="chat-submit-btn" aria-label="Send message" title="Send message">
+                                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <line x1="12" y1="19" x2="12" y2="5"></line>
+                                        <polyline points="5 12 12 5 19 12"></polyline>
+                                    </svg>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+        </section>
+
+        <!-- Dedicated Features Section (Delightful User Deliverables) -->
+        <section id="features" class="features-section">
+            <div class="features-header">
+                <span class="features-kicker">★ YOUR STUDY &amp; MEETING COMPANION ★</span>
+                <h2 class="features-main-title">
+                    Everything you receive in your <span class="marker-highlight">study folio.</span>
+                </h2>
+                <p class="features-sub-description">
+                    No messy notes or endless re-watching. Kuchu Puchu AI turns any lecture, meeting, or podcast into clear, actionable study tools you can use right away.
+                </p>
+            </div>
+            
+            <div class="features-grid">
+
+                <!-- 1. Executive Summary -->
+                <div class="feature-card card-summary">
+                    <div class="card-tape tape-yellow">★ CORE DIGEST</div>
+                    <div class="card-icon-badge">
+                        <span class="badge-emoji">📝</span>
+                    </div>
+                    <h3 class="feature-heading">Smart Executive Summary</h3>
+                    <p class="feature-body">
+                        A crisp, well-structured breakdown of the entire session. Distills long discussions into easy-to-read bullet points, core concepts, and key highlights in just a few minutes of reading.
+                    </p>
+                    <div class="card-cute-footer">
+                        <span class="cute-hand-note">"Read a 2-hour recording in 3 minutes ⏱️"</span>
+                    </div>
+                </div>
+
+                <!-- 2. Action Items & To-Dos -->
+                <div class="feature-card card-tasks">
+                    <div class="card-tape tape-mint">✓ TO-DO LIST</div>
+                    <div class="card-icon-badge">
+                        <span class="badge-emoji">✅</span>
+                    </div>
+                    <h3 class="feature-heading">Action Items &amp; Assigned Tasks</h3>
+                    <p class="feature-body">
+                        A ready-to-run checklist of who committed to what. Every task is extracted with its assigned owner and deadline so no next steps or responsibilities ever slip away.
+                    </p>
+                    <div class="card-cute-footer">
+                        <span class="cute-hand-note">"Clear owners &amp; commitments mapped out 📋"</span>
+                    </div>
+                </div>
+
+                <!-- 3. Key Decisions -->
+                <div class="feature-card card-decisions">
+                    <div class="card-tape tape-amber">🎯 VERDICTS</div>
+                    <div class="card-icon-badge">
+                        <span class="badge-emoji">🎯</span>
+                    </div>
+                    <h3 class="feature-heading">Key Decisions &amp; Consensus</h3>
+                    <p class="feature-body">
+                        A dedicated record of all conclusions, strategic agreements, and final rulings. Separates what was actually decided from casual brainstorming so your team stays aligned.
+                    </p>
+                    <div class="card-cute-footer">
+                        <span class="cute-hand-note">"Never wonder 'what did we decide?' again 🤝"</span>
+                    </div>
+                </div>
+
+                <!-- 4. Open Questions -->
+                <div class="feature-card card-questions">
+                    <div class="card-tape tape-rose">❓ FOLLOW-UPS</div>
+                    <div class="card-icon-badge">
+                        <span class="badge-emoji">❓</span>
+                    </div>
+                    <h3 class="feature-heading">Open Questions &amp; Follow-Ups</h3>
+                    <p class="feature-body">
+                        Unanswered questions, deferred topics, and unresolved points detected automatically, giving you an instant agenda for your next study group or catch-up meeting.
+                    </p>
+                    <div class="card-cute-footer">
+                        <span class="cute-hand-note">"Zero loose ends left behind 🔍"</span>
+                    </div>
+                </div>
+
+                <!-- 5. Concept Mind Map -->
+                <div class="feature-card card-mindmap">
+                    <div class="card-tape tape-lavender">🧠 BIG PICTURE</div>
+                    <div class="card-icon-badge">
+                        <span class="badge-emoji">🧠</span>
+                    </div>
+                    <h3 class="feature-heading">Visual Concept Mind Map</h3>
+                    <p class="feature-body">
+                        A visual idea tree that shows how main themes, sub-topics, and ideas connect. Zoom in on complex lectures and understand the big picture at a single glance.
+                    </p>
+                    <div class="card-cute-footer">
+                        <span class="cute-hand-note">"See how every concept connects together 🌿"</span>
+                    </div>
+                </div>
+
+                <!-- 6. Process Flowchart -->
+                <div class="feature-card card-flowchart">
+                    <div class="card-tape tape-sky">⚡ STEP-BY-STEP</div>
+                    <div class="card-icon-badge">
+                        <span class="badge-emoji">⚡</span>
+                    </div>
+                    <h3 class="feature-heading">Step-by-Step Flowchart</h3>
+                    <p class="feature-body">
+                        A chronological visual diagram that traces multi-step processes, project timelines, and sequential procedures taught in the video so you can follow the logic easily.
+                    </p>
+                    <div class="card-cute-footer">
+                        <span class="cute-hand-note">"Visual timelines and procedure steps 🚀"</span>
+                    </div>
+                </div>
+
+                <!-- 7. Interactive Practice Quiz -->
+                <div class="feature-card card-quiz">
+                    <div class="card-tape tape-sun">💡 ACTIVE RECALL</div>
+                    <div class="card-icon-badge">
+                        <span class="badge-emoji">💡</span>
+                    </div>
+                    <h3 class="feature-heading">Interactive Practice Quiz</h3>
+                    <p class="feature-body">
+                        Fun multiple-choice quiz questions crafted straight from your lecture. Test your understanding with clickable "Reveal Answer" buttons and complete explanations.
+                    </p>
+                    <div class="card-cute-footer">
+                        <span class="cute-hand-note">"Test your grasp before exams or syncs 🎓"</span>
+                    </div>
+                </div>
+
+                <!-- 8. Conversational Study Buddy -->
+                <div class="feature-card card-buddy">
+                    <div class="card-tape tape-lilac">💬 CHAT COMPANION</div>
+                    <div class="card-icon-badge">
+                        <span class="badge-emoji">💬</span>
+                    </div>
+                    <h3 class="feature-heading">Conversational Study Buddy</h3>
+                    <p class="feature-body">
+                        Chat directly with your notes! Ask any specific question about what was said in the video, and your study buddy finds the exact answer directly from the recording.
+                    </p>
+                    <div class="card-cute-footer">
+                        <span class="cute-hand-note">"Like having the speaker on speed-dial ☕"</span>
+                    </div>
+                </div>
+
+                <!-- 9. Printable PDF Notes -->
+                <div class="feature-card card-pdf">
+                    <div class="card-tape tape-paper">📄 ARCHIVAL</div>
+                    <div class="card-icon-badge">
+                        <span class="badge-emoji">📄</span>
+                    </div>
+                    <h3 class="feature-heading">One-Click Printable Notes</h3>
+                    <p class="feature-body">
+                        Clean, notebook-styled formatted study sheets ready to print, save as PDF, or tuck right into your study binder, Notion workspace, or Obsidian vault.
+                    </p>
+                    <div class="card-cute-footer">
+                        <span class="cute-hand-note">"Ready to print, highlight &amp; review 📑"</span>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="page-footer">
+        <div class="footer-brand-wrap">
+            <img src="/static/img/logo.jpg" alt="Kuchu Puchu AI" class="footer-logo-img">
+            <span class="footer-brand-name">Kuchu Puchu AI</span>
+        </div>
+        <p class="handwritten">Made with ❤️ by Azhan Ali</p>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

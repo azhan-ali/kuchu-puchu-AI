@@ -1,0 +1,43 @@
+# ── Kuchu Puchu AI — requirements.txt ──────────────────────────────────
+# Python >= 3.10 recommended
+
+# ── Web Framework & Server ───────────────────────────────────────────────────
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+jinja2>=3.1.4
+python-multipart>=0.0.9
+
+# ── Audio / Video Acquisition ─────────────────────────────────────────────────
+yt-dlp>=2024.4.9                  # Download audio from YouTube URLs
+pydub>=0.25.1                     # Audio file manipulation & format conversion
+ffmpeg-python>=0.2.0              # FFmpeg bindings (FFmpeg binary required on system)
+
+# ── Speech-to-Text ────────────────────────────────────────────────────────────
+openai-whisper>=20231117          # OpenAI Whisper (local STT)
+torch>=2.2.0                      # PyTorch backend for Whisper
+torchaudio>=2.2.0                 # Audio utilities for PyTorch
+
+# ── LLM Orchestration & Providers ─────────────────────────────────────────────
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langchain-groq>=0.1.9             # Groq provider for fast inference
+langchain-google-genai>=1.0.8     # Google Gemini provider
+langchain-mistralai>=0.1.0        # Mistral AI provider
+groq>=0.9.0                       # Groq client
+mistralai>=0.4.0                  # Mistral client
+
+# ── RAG & Vector Store ────────────────────────────────────────────────────────
+chromadb>=0.5.0                   # Vector store
+langchain-chroma>=0.1.4           # LangChain Chroma integration
+sentence-transformers>=3.0.0      # HuggingFace embedding models
+langchain-huggingface>=0.0.3      # HuggingFace embeddings bridge
+huggingface-hub>=0.23.0           # HuggingFace model download
+tiktoken>=0.7.0                   # Token counting
+
+# ── Translation & Utilities ───────────────────────────────────────────────────
+deep-translator>=1.11.4           # Lightweight translation wrapper
+python-dotenv>=1.0.0              # Load environment variables from .env
+requests>=2.32.0                  # HTTP requests (Sarvam API, etc.)
+numpy>=1.26.0
+tqdm>=4.66.0
