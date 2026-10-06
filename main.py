@@ -34,10 +34,32 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(title="Kuchu Puchu AI")
+
+# Configure CORS for flexible deployment
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
+
+@app.get("/health")
+@app.get("/api/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "Kuchu Puchu AI",
+        "version": "1.0.0",
+        "environment": os.environ.get("ENVIRONMENT", "production")
+    }
+
 
 # In-memory store for RAG chains
 rag_chains = {}
@@ -83,8 +105,10 @@ async def process_media(
     if source_type == "url" and url:
         source = url
     elif source_type == "file" and file:
-        os.makedirs("downloads", exist_ok=True)
-        file_path = f"downloads/{file.filename}"
+        downloads_dir = os.environ.get("DOWNLOAD_DIR", "downloads")
+        os.makedirs(downloads_dir, exist_ok=True)
+        safe_name = os.path.basename(file.filename or "uploaded_media").replace(" ", "_")
+        file_path = os.path.join(downloads_dir, f"{uuid.uuid4().hex[:8]}_{safe_name}")
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         source = file_path
@@ -365,4 +389,13 @@ async def chat(req: ChatRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, reload_dirs=["app", "core", "utils"])
+    port = int(os.environ.get("PORT", 8000))
+    host = os.environ.get("HOST", "0.0.0.0")
+    is_dev = os.environ.get("ENVIRONMENT", "").lower() == "development"
+    uvicorn.run(
+        "main:app",
+        host=host,
+        port=port,
+        reload=is_dev,
+        reload_dirs=["app", "core", "utils"] if is_dev else None
+    )

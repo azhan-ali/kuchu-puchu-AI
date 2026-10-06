@@ -23,6 +23,8 @@ from core.vector_store import build_vector_store, load_vector_store, get_retriev
 
 def get_llm():
     api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY environment variable is missing. Please set it in your Railway/Render environment.")
     primary_llm = ChatGroq(
         model="openai/gpt-oss-120b",
         api_key=api_key,

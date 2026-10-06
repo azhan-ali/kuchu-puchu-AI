@@ -26,6 +26,16 @@ vector_db/
 # Media / Audio Downloads & Chunks (Runtime artifacts)
 downloads/*
 !downloads/.gitkeep
+*.wav
+*.mp3
+*.mp4
+*.m4a
+*.webm
+*.ogg
+*.flac
+
+# Logs & Runtime
+*.log
 
 # Operating System Files
 .DS_Store

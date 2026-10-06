@@ -1,12 +1,33 @@
-import yt_dlp
-from pydub import AudioSegment
 import os 
 import wave
 import subprocess
+import shutil
+import yt_dlp
+from pydub import AudioSegment
 
-# making directory 
-DOWNLOAD_DIR = 'downloads'
+# Configurable downloads directory
+DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "downloads")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+def get_ffmpeg_binary() -> str:
+    """Find FFmpeg executable from PATH, imageio_ffmpeg, or common system locations."""
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        pass
+    for p in ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/opt/homebrew/bin/ffmpeg"]:
+        if os.path.exists(p):
+            return p
+    return "ffmpeg"
+
+# Ensure pydub uses the resolved FFmpeg binary
+ffmpeg_exe = get_ffmpeg_binary()
+if ffmpeg_exe and ffmpeg_exe != "ffmpeg":
+    AudioSegment.converter = ffmpeg_exe
 
 ## function that download the audio from youtube link 
 def download_youtube_audio(url: str) -> str:
@@ -53,11 +74,12 @@ def download_youtube_audio(url: str) -> str:
 def convert_to_wav(input_path: str) -> str:
     """Convert any audio/video file to 16kHz mono WAV using direct FFmpeg with pydub fallback."""
     output_path = os.path.splitext(input_path)[0] + "_converted.wav"
+    bin_path = get_ffmpeg_binary()
     
     # Fast path: use ffmpeg directly (bypasses Python memory overhead and runs in <1s)
     try:
         cmd = [
-            "ffmpeg", "-y", "-v", "error",
+            bin_path, "-y", "-v", "error",
             "-i", input_path,
             "-vn",
             "-acodec", "pcm_s16le",

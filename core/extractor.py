@@ -15,9 +15,12 @@ _extractor_llm_instance = None
 def get_llm():
     global _extractor_llm_instance
     if _extractor_llm_instance is None:
+        groq_key = os.getenv("GROQ_API_KEY")
+        if not groq_key:
+            raise ValueError("GROQ_API_KEY environment variable is missing. Please set it in your Railway/Render environment.")
         _extractor_llm_instance = ChatGroq(
             model="openai/gpt-oss-120b",
-            api_key=os.getenv("GROQ_API_KEY"),
+            api_key=groq_key,
             temperature=0.2
         )
     return _extractor_llm_instance

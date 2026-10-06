@@ -463,10 +463,86 @@ You: What is the relationship between rank and nullity?
 
 ---
 
+## 🚀 Production Deployment Guide
+
+### Railway vs. Render Architecture Evaluation
+
+| Evaluation Criteria | 🚂 Railway (**Recommended**) | ☁️ Render |
+| :--- | :--- | :--- |
+| **Memory Allocation** | **Up to 8 GB dynamic RAM** (Prevents PyTorch OOM) | ❌ **512 MB hard limit on Free tier** (crashes with OOM 137 on PyTorch + Whisper) |
+| **CPU & Concurrency** | **Up to 8 vCPUs dynamic burst** | 0.1 – 0.5 CPU on low/free plans |
+| **FFmpeg Availability** | ✅ Native via Dockerfile or Nixpacks | ⚠️ Requires custom Dockerfile (missing on native Python) |
+| **Timeout Limits** | Generous (handles long video processing & SSE streams) | 100-second HTTP proxy timeout on free tier |
+| **Cold Starts** | Zero idling (container stays warm) | Spins down after 15 minutes of inactivity (~60s cold start) |
+| **Verdict** | **100% Recommended Choice** | Requires paid Standard plan (2GB+ RAM) to avoid OOM crashes |
+
+> [!TIP]
+> **Why Railway is Better for Kuchu Puchu AI**: PyTorch, Whisper STT (`small` / `base`), and HuggingFace MiniLM embeddings require ~1.2 GB to 2.0 GB of memory under active workload. Render Free enforces a strict 512 MB limit that triggers the Linux Out-Of-Memory (OOM) killer with `Exit code 137`. Railway provides dynamic RAM headroom (up to 8 GB), preventing crashes during audio chunking and model inference.
+
+---
+
+### 🚂 Option 1: Deploy to Railway (Recommended — 3 Steps)
+
+1. **Push your repository to GitHub**:
+   Ensure your latest code is pushed to your GitHub repository:
+   ```bash
+   git push origin main
+   ```
+
+2. **Create a Railway Project**:
+   - Go to [railway.app](https://railway.app/) and sign in with GitHub.
+   - Click **"New Project"** → Select **"Deploy from GitHub repo"**.
+   - Select `azhan-ali/kuchu-puchu-AI`.
+   - Railway will automatically detect [`Dockerfile`](Dockerfile) and [`railway.json`](railway.json).
+
+3. **Configure Environment Variables**:
+   In your Railway dashboard, navigate to **Variables** and add:
+   | Variable | Value | Required? |
+   | :--- | :--- | :--- |
+   | `GROQ_API_KEY` | `gsk_...` (from [console.groq.com](https://console.groq.com/keys)) | **Yes** |
+   | `GEMINI_API_KEY` | `AIzaSy...` (from [aistudio.google.com](https://aistudio.google.com/)) | **Yes** (for Diagrams) |
+   | `MISTRAL_API_KEY` | `...` (from [console.mistral.ai](https://console.mistral.ai/)) | Optional (fallback) |
+   | `SARVAM_API_KEY` | `...` (from [sarvam.ai](https://www.sarvam.ai/)) | Optional (Hinglish) |
+   | `HUGGINGFACE_API_KEY` | `hf_...` (from [huggingface.co](https://huggingface.co/settings/tokens)) | Optional |
+   | `WHISPER_MODEL` | `small` or `base` | Default: `small` |
+   | `ENVIRONMENT` | `production` | Recommended |
+
+4. **Generate Public Domain**:
+   - In Railway, click **Settings** → **Networking** → **Generate Domain**.
+   - Your application will be live at `https://kuchu-puchu-ai-production-xxxx.up.railway.app`!
+   - Health check endpoint is active at `/health`.
+
+---
+
+### ☁️ Option 2: Deploy to Render (Docker Service)
+
+If deploying to Render, you must use the **Docker** runtime and a plan with at least 2 GB RAM (Standard plan or above):
+
+1. Go to [render.com](https://render.com/) and click **"New +"** → **"Web Service"**.
+2. Connect your GitHub repository: `azhan-ali/kuchu-puchu-AI`.
+3. Set the following configuration:
+   - **Runtime**: `Docker` (Render automatically uses [`Dockerfile`](Dockerfile))
+   - **Instance Type**: `Standard` (2 GB RAM) or higher
+   - **Health Check Path**: `/health`
+4. In **Environment Variables**, add:
+   - `GROQ_API_KEY`: Your Groq API key
+   - `GEMINI_API_KEY`: Your Gemini API key
+   - `WHISPER_MODEL`: `base` (recommended for faster processing)
+   - `PORT`: `10000`
+5. Click **"Deploy Web Service"**.
+
+---
+
 ## 📂 Project Structure
 
 ```
 kuchu-puchu-AI/
+├── Dockerfile                # Production Docker container definition (FFmpeg + CPU PyTorch)
+├── railway.json              # Railway platform build & healthcheck deployment config
+├── nixpacks.toml             # Nixpacks fallback configuration with system FFmpeg
+├── render.yaml               # Render Blueprint configuration
+├── Procfile                  # PaaS process file (Uvicorn web worker)
+├── .dockerignore             # Excludes local virtualenvs and data from Docker builds
 ├── .env.example              # Safe environment variable template
 ├── .gitignore                # Excludes secrets, virtual environments, audio downloads & Chroma DB
 ├── LICENSE                   # MIT Open Source License

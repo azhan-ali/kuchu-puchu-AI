@@ -18,7 +18,8 @@ except ImportError:
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
-CHROMA_DIR = "vector_db"
+CHROMA_DIR = os.getenv("CHROMA_PERSIST_DIR", "vector_db")
+os.makedirs(CHROMA_DIR, exist_ok=True)
 COLLECTION_NAME = "meeting_transcript"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
