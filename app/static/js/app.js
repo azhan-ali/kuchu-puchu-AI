@@ -443,15 +443,44 @@ document.addEventListener('DOMContentLoaded', () => {
                                 if (line.startsWith('data:')) {
                                     const jsonStr = line.replace(/^data:\s*/, '').trim();
                                     if (jsonStr) {
+                                        let eventData = null;
                                         try {
-                                            const eventData = JSON.parse(jsonStr);
+                                            eventData = JSON.parse(jsonStr);
+                                        } catch (parseErr) {
+                                            console.warn('Failed to parse SSE payload:', parseErr, jsonStr);
+                                            continue;
+                                        }
+
+                                        if (eventData) {
                                             handlePipelineEvent(eventData);
 
                                             if (eventData.stage_id === 'final' && eventData.status === 'completed' && eventData.data) {
                                                 finalResultData = eventData.data;
                                             }
-                                        } catch (parseErr) {
-                                            console.warn('Failed to parse SSE payload:', parseErr, jsonStr);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Process any remaining bytes in buffer after stream completes
+                    if (!finalResultData && buffer && buffer.trim()) {
+                        const trailingBlocks = buffer.trim().split('\n\n');
+                        for (const block of trailingBlocks) {
+                            const lines = block.trim().split('\n');
+                            for (const line of lines) {
+                                if (line.startsWith('data:')) {
+                                    const jsonStr = line.replace(/^data:\s*/, '').trim();
+                                    if (jsonStr) {
+                                        try {
+                                            const eventData = JSON.parse(jsonStr);
+                                            handlePipelineEvent(eventData);
+                                            if (eventData.stage_id === 'final' && eventData.status === 'completed' && eventData.data) {
+                                                finalResultData = eventData.data;
+                                            }
+                                        } catch (e) {
+                                            console.warn('Trailing buffer parse error:', e);
                                         }
                                     }
                                 }
@@ -467,7 +496,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (!finalResultData) {
-                    throw new Error('Pipeline completed without returning folio data.');
+                    throw new Error('Pipeline completed without returning folio data. Please check deployment logs or try again.');
                 }
 
                 stopPipelineTimer();
