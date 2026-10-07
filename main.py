@@ -131,11 +131,16 @@ async def process_media(
                     except asyncio.TimeoutError:
                         yield ": ping\n\n"
                 chunks = await audio_task
-                yield f"data: {json.dumps({'stage_index': 1, 'stage_id': 'audio', 'status': 'completed', 'title': STAGE_TITLES['audio'], 'detail': f'Audio prepared with {len(chunks)} chunk(s)!', 'progress': 11})}\n\n"
+                is_direct_transcript = len(chunks) == 1 and str(chunks[0]).endswith(".txt")
+                if is_direct_transcript:
+                    yield f"data: {json.dumps({'stage_index': 1, 'stage_id': 'audio', 'status': 'completed', 'title': STAGE_TITLES['audio'], 'detail': 'Direct captions/transcript fetched from YouTube timedtext!', 'progress': 11})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'stage_index': 1, 'stage_id': 'audio', 'status': 'completed', 'title': STAGE_TITLES['audio'], 'detail': f'Audio prepared with {len(chunks)} chunk(s)!', 'progress': 11})}\n\n"
 
                 # 2. Transcribing with Whisper / Groq / Sarvam with keep-alive pings
                 stt_engine = get_stt_engine_name(language)
-                yield f"data: {json.dumps({'stage_index': 2, 'stage_id': 'whisper', 'status': 'processing', 'title': STAGE_TITLES['whisper'], 'detail': f'Transcribing audio chunks using {stt_engine}...', 'progress': 22})}\n\n"
+                whisper_detail = "Loading direct verified captions..." if is_direct_transcript else f"Transcribing audio chunks using {stt_engine}..."
+                yield f"data: {json.dumps({'stage_index': 2, 'stage_id': 'whisper', 'status': 'processing', 'title': STAGE_TITLES['whisper'], 'detail': whisper_detail, 'progress': 22})}\n\n"
                 transcribe_task = asyncio.ensure_future(asyncio.to_thread(transcribe_all, chunks, language))
                 while not transcribe_task.done():
                     try:
@@ -145,7 +150,8 @@ async def process_media(
                         yield ": ping\n\n"
                 transcript = await transcribe_task
                 word_count = len(transcript.split()) if transcript else 0
-                yield f"data: {json.dumps({'stage_index': 2, 'stage_id': 'whisper', 'status': 'completed', 'title': STAGE_TITLES['whisper'], 'detail': f'Transcription complete ({word_count:,} words)!', 'progress': 22})}\n\n"
+                whisper_completed = f"Transcript ready ({word_count:,} words)!" if is_direct_transcript else f"Transcription complete ({word_count:,} words)!"
+                yield f"data: {json.dumps({'stage_index': 2, 'stage_id': 'whisper', 'status': 'completed', 'title': STAGE_TITLES['whisper'], 'detail': whisper_completed, 'progress': 22})}\n\n"
 
                 # Setup event queue and shared state for concurrent post-transcription execution
                 event_queue = asyncio.Queue()

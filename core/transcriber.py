@@ -208,6 +208,23 @@ def transcribe_all(chunks: list, language: str = "english", progress_callback=No
     if not chunks:
         return ""
 
+    # Direct transcript fallback support
+    if len(chunks) == 1 and str(chunks[0]).endswith(".txt") and os.path.exists(chunks[0]):
+        print(f"[transcriber] Pre-extracted transcript provided via {chunks[0]}. Reading directly...")
+        try:
+            with open(chunks[0], "r", encoding="utf-8") as f:
+                content = f.read().strip()
+            word_count = len(content.split())
+            print(f"[transcriber] Direct transcript loaded ({word_count} words).")
+            if progress_callback:
+                try:
+                    progress_callback(1, 1, content)
+                except Exception:
+                    pass
+            return content
+        except Exception as e:
+            print(f"[transcriber] Notice: Could not read direct transcript file: {e}")
+
     engine_name = get_stt_engine_name(language)
     total = len(chunks)
     print(f"[transcriber] Using {engine_name} for transcription of {total} chunk(s)...")
