@@ -14,10 +14,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install system dependencies (FFmpeg for video/audio extraction, curl for health checks)
+# Install system dependencies (FFmpeg for video/audio extraction, nodejs as JS runtime for yt-dlp, curl for health checks)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
+    nodejs \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

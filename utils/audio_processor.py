@@ -29,16 +29,53 @@ ffmpeg_exe = get_ffmpeg_binary()
 if ffmpeg_exe and ffmpeg_exe != "ffmpeg":
     AudioSegment.converter = ffmpeg_exe
 
-## function that download the audio from youtube link 
-def download_youtube_audio(url: str) -> str:
-    output_template = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
-    ydl_opts = {
-        "format": "bestaudio/best",
+def get_youtube_cookiefile() -> str | None:
+    """
+    Safely resolves YouTube cookies for yt-dlp authentication from:
+    1. YOUTUBE_COOKIES_FILE env var (absolute or relative path to cookies file)
+    2. Local cookies.txt file in workspace root
+    3. YOUTUBE_COOKIES_BASE64 env var (base64-encoded Netscape cookies text)
+    4. YOUTUBE_COOKIES env var (raw Netscape cookies text)
+    Returns the path to the cookie file or None.
+    """
+    file_env = os.getenv("YOUTUBE_COOKIES_FILE")
+    if file_env and os.path.exists(file_env) and os.path.getsize(file_env) > 0:
+        return file_env
+
+    local_cookie = os.path.join(os.getcwd(), "cookies.txt")
+    if os.path.exists(local_cookie) and os.path.getsize(local_cookie) > 0:
+        return local_cookie
+
+    b64_cookies = os.getenv("YOUTUBE_COOKIES_BASE64")
+    if b64_cookies and b64_cookies.strip():
+        try:
+            import base64
+            decoded = base64.b64decode(b64_cookies.strip()).decode("utf-8", errors="replace")
+            tmp_path = os.path.join(DOWNLOAD_DIR, "yt_cookies.txt")
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(decoded)
+            return tmp_path
+        except Exception as e:
+            print(f"[audio_processor] Warning: Failed to decode YOUTUBE_COOKIES_BASE64: {e}")
+
+    raw_cookies = os.getenv("YOUTUBE_COOKIES")
+    if raw_cookies and raw_cookies.strip():
+        tmp_path = os.path.join(DOWNLOAD_DIR, "yt_cookies.txt")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(raw_cookies.strip())
+        return tmp_path
+
+    return None
+
+
+def _build_ydl_opts(output_template: str, player_clients: list, cookie_file: str | None = None) -> dict:
+    opts = {
+        "format": "bestaudio/best[ext=m4a]/best",
         "outtmpl": output_template,
         "noplaylist": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "web", "ios"]
+                "player_client": player_clients
             }
         },
         "postprocessors": [
@@ -54,53 +91,88 @@ def download_youtube_audio(url: str) -> str:
         ],
         "quiet": False,
         "no_warnings": False,
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        }
     }
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            print(f"[audio_processor] Extracting audio from YouTube: {url}")
-            info = ydl.extract_info(url, download=True)
-            if "entries" in info and info["entries"]:
-                info = info["entries"][0]
-            prep = ydl.prepare_filename(info)
-            base = os.path.splitext(prep)[0]
-            filename = base + ".wav"
-            
-            if not os.path.exists(filename) or os.path.getsize(filename) == 0:
-                vid_id = info.get("id", "")
-                found = None
-                for f in os.listdir(DOWNLOAD_DIR):
-                    f_path = os.path.join(DOWNLOAD_DIR, f)
-                    if (vid_id in f or os.path.basename(base) in f) and os.path.getsize(f_path) > 0:
-                        if f.endswith(".wav"):
-                            found = f_path
-                            break
-                        elif f.endswith((".webm", ".m4a", ".mp4", ".opus", ".mp3")):
-                            print(f"[audio_processor] Converting downloaded raw stream {f} to WAV...")
-                            found = convert_to_wav(f_path)
-                            break
-                if found and os.path.exists(found) and os.path.getsize(found) > 0:
-                    filename = found
-                else:
-                    raise FileNotFoundError(f"Could not locate extracted WAV file for YouTube ID: {vid_id}")
+    if cookie_file and os.path.exists(cookie_file):
+        opts["cookiefile"] = cookie_file
+    return opts
 
-            print(f"[audio_processor] YouTube audio successfully downloaded: {filename}")
-            return filename
-            
-    except yt_dlp.utils.DownloadError as de:
-        err_msg = str(de)
-        print(f"[audio_processor] YouTube download error: {err_msg}")
-        if "Sign in to confirm you're not a bot" in err_msg or "blocked" in err_msg.lower() or "403" in err_msg:
-            raise RuntimeError(
-                "YouTube has restricted downloads from cloud datacenter servers. "
-                "Please download the video or audio locally and upload the file directly using the 'Upload Audio / Video' option."
-            )
-        elif "Private video" in err_msg or "Video unavailable" in err_msg:
-            raise RuntimeError(f"YouTube video is unavailable or private: {err_msg}")
-        raise RuntimeError(f"YouTube extraction failed: {err_msg}")
-    except Exception as e:
-        print(f"[audio_processor] Unexpected YouTube download error: {e}")
-        raise RuntimeError(f"Failed to process YouTube audio: {str(e)}")
+
+## function that download the audio from youtube link 
+def download_youtube_audio(url: str) -> str:
+    output_template = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
+    cookie_file = get_youtube_cookiefile()
+    if cookie_file:
+        print("[audio_processor] Authenticated YouTube session detected (cookiefile enabled).")
+
+    # Client strategies: android + web_safari avoids bot challenges; pure android as backup
+    client_strategies = [
+        ["android", "web_safari"],
+        ["android"],
+        ["tv", "android"]
+    ]
+
+    last_error = None
+
+    for attempt_idx, clients in enumerate(client_strategies):
+        print(f"[audio_processor] Attempting YouTube extraction using clients: {clients} (attempt {attempt_idx + 1}/{len(client_strategies)})...")
+        ydl_opts = _build_ydl_opts(output_template, clients, cookie_file)
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                if "entries" in info and info["entries"]:
+                    info = info["entries"][0]
+                prep = ydl.prepare_filename(info)
+                base = os.path.splitext(prep)[0]
+                filename = base + ".wav"
+
+                if not os.path.exists(filename) or os.path.getsize(filename) == 0:
+                    vid_id = info.get("id", "")
+                    found = None
+                    for f in os.listdir(DOWNLOAD_DIR):
+                        f_path = os.path.join(DOWNLOAD_DIR, f)
+                        if (vid_id in f or os.path.basename(base) in f) and os.path.getsize(f_path) > 0:
+                            if f.endswith(".wav"):
+                                found = f_path
+                                break
+                            elif f.endswith((".webm", ".m4a", ".mp4", ".opus", ".mp3")):
+                                print(f"[audio_processor] Converting downloaded raw stream {f} to WAV...")
+                                found = convert_to_wav(f_path)
+                                break
+                    if found and os.path.exists(found) and os.path.getsize(found) > 0:
+                        filename = found
+                    else:
+                        raise FileNotFoundError(f"Could not locate extracted WAV file for YouTube ID: {vid_id}")
+
+                print(f"[audio_processor] YouTube audio successfully downloaded: {filename}")
+                return filename
+
+        except yt_dlp.utils.DownloadError as de:
+            last_error = str(de)
+            print(f"[audio_processor] Client strategy {clients} failed: {last_error}")
+            # If not last attempt, continue to next client strategy
+            if attempt_idx < len(client_strategies) - 1:
+                continue
+        except Exception as e:
+            last_error = str(e)
+            print(f"[audio_processor] Strategy error: {last_error}")
+            if attempt_idx < len(client_strategies) - 1:
+                continue
+
+    # If all client strategies were exhausted
+    err_lower = (last_error or "").lower()
+    if "sign in to confirm you're not a bot" in err_lower or "bot" in err_lower or "403" in err_lower:
+        raise RuntimeError(
+            "YouTube has flagged this datacenter IP for bot verification. "
+            "To solve this: 1) Add your YouTube cookies to Railway via the YOUTUBE_COOKIES environment variable (see .env.example), "
+            "or 2) Upload your video/audio file directly via 'Upload Audio / Video'."
+        )
+    elif "private video" in err_lower or "video unavailable" in err_lower:
+        raise RuntimeError(f"YouTube video is private or unavailable: {last_error}")
+    raise RuntimeError(f"YouTube extraction failed: {last_error}")
 
 
 ## Convert audio/video to 16kHz mono WAV format efficiently
