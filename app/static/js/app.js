@@ -500,7 +500,12 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) {
                 stopPipelineTimer();
                 console.error('Analysis error:', error);
-                alert('Analysis Error: ' + error.message);
+                let displayMsg = error.message || 'An unexpected error occurred during analysis.';
+                const lowerMsg = displayMsg.toLowerCase();
+                if (lowerMsg.includes('failed to fetch') || lowerMsg.includes('networkerror') || lowerMsg.includes('network error')) {
+                    displayMsg = 'Network connection was interrupted or timed out. If you were analyzing a remote YouTube video, YouTube may be restricting datacenter access—please try uploading the audio or video file directly.';
+                }
+                alert('Analysis Error: ' + displayMsg);
                 loadingSection.classList.add('hidden');
                 heroSection.classList.remove('hidden');
                 heroSection.scrollIntoView({ behavior: 'smooth' });

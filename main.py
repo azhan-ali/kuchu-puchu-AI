@@ -22,7 +22,7 @@ if hasattr(sys.stderr, "reconfigure"):
 
 # core imports
 from utils.audio_processor import process_input
-from core.transcriber import transcribe_all
+from core.transcriber import transcribe_all, get_stt_engine_name
 from core.summarizer import summarize, generate_title
 from core.extractor import (
     extract_action_items, extract_key_decisions, extract_questions,
@@ -121,15 +121,29 @@ async def process_media(
     if is_streaming:
         async def event_generator():
             try:
-                # 1. Processing audio/video (fast FFmpeg extraction)
+                # 1. Processing audio/video (fast FFmpeg extraction) with keep-alive pings
                 yield f"data: {json.dumps({'stage_index': 1, 'stage_id': 'audio', 'status': 'processing', 'title': STAGE_TITLES['audio'], 'detail': 'Extracting 16kHz audio tracks and preparing chunks...', 'progress': 11})}\n\n"
-                chunks = await asyncio.to_thread(process_input, source)
+                audio_task = asyncio.ensure_future(asyncio.to_thread(process_input, source))
+                while not audio_task.done():
+                    try:
+                        await asyncio.wait_for(asyncio.shield(audio_task), timeout=2.5)
+                        break
+                    except asyncio.TimeoutError:
+                        yield ": ping\n\n"
+                chunks = await audio_task
                 yield f"data: {json.dumps({'stage_index': 1, 'stage_id': 'audio', 'status': 'completed', 'title': STAGE_TITLES['audio'], 'detail': f'Audio prepared with {len(chunks)} chunk(s)!', 'progress': 11})}\n\n"
 
-                # 2. Transcribing with Whisper (fast greedy decoding, beam_size=1)
-                stt_engine = "Sarvam AI" if language.lower() == "hinglish" else "Whisper"
+                # 2. Transcribing with Whisper / Groq / Sarvam with keep-alive pings
+                stt_engine = get_stt_engine_name(language)
                 yield f"data: {json.dumps({'stage_index': 2, 'stage_id': 'whisper', 'status': 'processing', 'title': STAGE_TITLES['whisper'], 'detail': f'Transcribing audio chunks using {stt_engine}...', 'progress': 22})}\n\n"
-                transcript = await asyncio.to_thread(transcribe_all, chunks, language)
+                transcribe_task = asyncio.ensure_future(asyncio.to_thread(transcribe_all, chunks, language))
+                while not transcribe_task.done():
+                    try:
+                        await asyncio.wait_for(asyncio.shield(transcribe_task), timeout=2.5)
+                        break
+                    except asyncio.TimeoutError:
+                        yield ": ping\n\n"
+                transcript = await transcribe_task
                 word_count = len(transcript.split()) if transcript else 0
                 yield f"data: {json.dumps({'stage_index': 2, 'stage_id': 'whisper', 'status': 'completed', 'title': STAGE_TITLES['whisper'], 'detail': f'Transcription complete ({word_count:,} words)!', 'progress': 22})}\n\n"
 
@@ -268,13 +282,13 @@ async def process_media(
                     run_mcq_and_takeaways_worker()
                 )
 
-                # Stream out events as each worker completes in real time
+                # Stream out events as each worker completes in real time (with keep-alive pings)
                 while not workers.done() or not event_queue.empty():
                     try:
-                        event = await asyncio.wait_for(event_queue.get(), timeout=0.1)
+                        event = await asyncio.wait_for(event_queue.get(), timeout=2.5)
                         yield f"data: {json.dumps(event)}\n\n"
                     except asyncio.TimeoutError:
-                        pass
+                        yield ": ping\n\n"
 
                 await workers
 
@@ -303,13 +317,14 @@ async def process_media(
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+                err_msg = str(e) or repr(e)
+                yield f"data: {json.dumps({'status': 'error', 'message': err_msg})}\n\n"
 
         return StreamingResponse(
             event_generator(),
             media_type="text/event-stream",
             headers={
-                "Cache-Control": "no-cache",
+                "Cache-Control": "no-cache, no-transform",
                 "Connection": "keep-alive",
                 "X-Accel-Buffering": "no"
             }

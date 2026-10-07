@@ -37,7 +37,11 @@ def get_embeddings():
     return _embeddings_instance
 
 def build_vector_store(transcript: str) -> Chroma:
-    print("Building vector store...")
+    print("[vector_store] Building vector store...")
+
+    clean_text = (transcript or "").strip()
+    if not clean_text:
+        clean_text = "No spoken content detected in this recording."
 
     # Optimal semantic chunks: 750 chars (~110 words) provides complete thoughts,
     # cuts number of embedding calls in half, and significantly improves RAG accuracy.
@@ -46,7 +50,9 @@ def build_vector_store(transcript: str) -> Chroma:
         chunk_overlap=75
     )
 
-    chunks = splitter.split_text(transcript)
+    chunks = splitter.split_text(clean_text)
+    if not chunks:
+        chunks = [clean_text]
 
     docs = [
         Document(page_content=chunk, metadata={'chunk_index': i})
@@ -55,19 +61,26 @@ def build_vector_store(transcript: str) -> Chroma:
 
     embeddings = get_embeddings()
     try:
-        vector_store = Chroma.from_documents(
-            documents=docs,
-            embedding=embeddings,
+        import chromadb
+        client = chromadb.PersistentClient(path=CHROMA_DIR)
+        try:
+            client.delete_collection(COLLECTION_NAME)
+        except Exception:
+            pass
+        vector_store = Chroma(
+            client=client,
             collection_name=COLLECTION_NAME,
-            persist_directory=CHROMA_DIR
+            embedding_function=embeddings
         )
-    except Exception:
+        vector_store.add_documents(docs)
+    except Exception as e:
+        print(f"[vector_store] Persistent store notice: {e}. Using direct Chroma...")
         vector_store = Chroma.from_documents(
             documents=docs,
             embedding=embeddings
         )
 
-    print(f"Vector store indexed with {len(docs)} semantic chunks.")
+    print(f"[vector_store] Vector store indexed with {len(docs)} semantic chunks.")
     return vector_store
 
 

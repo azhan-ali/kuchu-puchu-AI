@@ -1,35 +1,95 @@
 import os 
-import whisper
+import time
 import requests
 import torch
 from pydub import AudioSegment
 from concurrent.futures import ThreadPoolExecutor
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Sarvam's sync STT-translate API rejects audio longer than 30s.
-# We slice each chunk into 25s pieces (with a 5s safety margin) before sending.
 SARVAM_PIECE_SECONDS = 25
 SARVAM_STT_TRANSLATE_URL = "https://api.sarvam.ai/speech-to-text-translate"
 
-_model = None
+_local_whisper_model = None
 
-def load_model():
-    global _model
+def get_stt_engine_name(language: str = "english") -> str:
+    """Returns human-friendly name of the engine that will be used."""
+    groq_key = os.getenv("GROQ_API_KEY")
+    sarvam_key = os.getenv("SARVAM_API_KEY")
+    
+    if language and language.lower() == "hinglish" and sarvam_key:
+        return "Sarvam AI"
+    elif groq_key:
+        return "Whisper (Groq Cloud Turbo)"
+    else:
+        return "Whisper (Local CPU)"
 
-    if _model is None:
-        model_name = os.getenv("WHISPER_MODEL", "small")
+def load_local_whisper_model():
+    """Lazy-load local Whisper model with memory-safe default ('base' instead of heavy 'small')."""
+    global _local_whisper_model
+
+    if _local_whisper_model is None:
+        import whisper
+        # In cloud environments, 'base' or 'tiny' uses <150MB RAM vs >500MB for 'small'
+        model_name = os.getenv("WHISPER_MODEL", "base")
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Loading Whisper model: {model_name} on device: {device} ...")
-        _model = whisper.load_model(model_name, device=device)
-        print(f"Whisper model ({model_name}) loaded successfully.")
+        print(f"[transcriber] Loading local Whisper fallback model: {model_name} on device: {device}...")
+        _local_whisper_model = whisper.load_model(model_name, device=device)
+        print(f"[transcriber] Local Whisper model ({model_name}) loaded successfully.")
 
-    return _model
+    return _local_whisper_model
+
+def transcribe_chunk_groq(chunk_path: str, language: str = "english") -> str:
+    """Fast Groq cloud Whisper transcription (runs in 1-3 seconds, 0MB server RAM)."""
+    groq_key = os.getenv("GROQ_API_KEY")
+    if not groq_key:
+        raise ValueError("GROQ_API_KEY not configured.")
+
+    from groq import Groq
+    client = Groq(api_key=groq_key)
+    model = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo")
+
+    # Groq accepts maximum 25 MB file size
+    file_size_mb = os.path.getsize(chunk_path) / (1024 * 1024)
+    if file_size_mb > 24.0:
+        print(f"[transcriber] Chunk {chunk_path} is {file_size_mb:.1f}MB (>24MB). Compressing for Groq...")
+        compressed_path = chunk_path + "_groq.mp3"
+        try:
+            audio = AudioSegment.from_file(chunk_path)
+            audio.export(compressed_path, format="mp3", bitrate="64k")
+            target_file = compressed_path
+        except Exception as e:
+            print(f"[transcriber] MP3 compression failed: {e}, using original chunk")
+            target_file = chunk_path
+    else:
+        target_file = chunk_path
+        compressed_path = None
+
+    try:
+        with open(target_file, "rb") as f:
+            transcription = client.audio.transcriptions.create(
+                file=(os.path.basename(target_file), f),
+                model=model,
+                response_format="text",
+                language="en" if language and language.lower() == "english" else None,
+                temperature=0.0
+            )
+            result_text = transcription if isinstance(transcription, str) else transcription.text
+            return result_text.strip()
+    finally:
+        if compressed_path and os.path.exists(compressed_path):
+            try:
+                os.remove(compressed_path)
+            except Exception:
+                pass
 
 def transcribe_chunk_whisper(chunk_path: str, language: str = "english") -> str:
-    model = load_model()
+    """Local Whisper fallback if cloud APIs are unavailable."""
+    model = load_local_whisper_model()
     is_cuda = torch.cuda.is_available()
 
-    # Fast decoding options: beam_size=1 (greedy) is 3-4x faster than beam_size=5
-    # condition_on_previous_text=False prevents repetition hallucinations and fallback loops
     transcribe_kwargs = {
         "task": "transcribe",
         "beam_size": 1,
@@ -64,21 +124,20 @@ def _send_to_sarvam(piece_path: str) -> str:
         )
 
     if not response.ok:
-        print(f"\n❌ Sarvam returned {response.status_code}")
-        print(f"Response body: {response.text}\n")
+        print(f"\n❌ Sarvam returned {response.status_code}: {response.text}\n")
         response.raise_for_status()
 
     return response.json().get("transcript", "")
 
-## chunking of sarvam api key with parallel execution
 def transcribe_chunk_sarvam(chunk_path: str) -> str:
     """
-    Sarvam sync API only accepts ≤30s audio. We split this chunk into
-    25-second pieces, send each concurrently, and join the transcripts in order.
+    Sarvam sync API only accepts ≤30s audio. Splits chunk into
+    25-second pieces, sends each concurrently, and joins the transcripts in order.
     """
     api_key = os.getenv("SARVAM_API_KEY")
     if not api_key:
-        raise RuntimeError("SARVAM_API_KEY is not set in environment / .env")
+        print("[transcriber] SARVAM_API_KEY not configured. Falling back to Groq/Whisper...")
+        return transcribe_chunk_groq_or_whisper(chunk_path, language="hinglish")
 
     audio = AudioSegment.from_wav(chunk_path)
     piece_ms = SARVAM_PIECE_SECONDS * 1000
@@ -95,7 +154,7 @@ def transcribe_chunk_sarvam(chunk_path: str) -> str:
     def _process_piece(item):
         idx, p_path = item
         try:
-            print(f"  → Sarvam piece {idx + 1}/{total_pieces} ...")
+            print(f"  → Sarvam piece {idx + 1}/{total_pieces}...")
             text = _send_to_sarvam(p_path)
             return (idx, text)
         finally:
@@ -105,7 +164,6 @@ def transcribe_chunk_sarvam(chunk_path: str) -> str:
                 except Exception:
                     pass
 
-    # Concurrently send pieces (4-6 workers)
     max_workers = min(6, len(pieces_info)) if pieces_info else 1
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         results = list(executor.map(_process_piece, pieces_info))
@@ -113,29 +171,82 @@ def transcribe_chunk_sarvam(chunk_path: str) -> str:
     results.sort(key=lambda x: x[0])
     return " ".join(r[1] for r in results if r[1]).strip()
 
-## Transcribe the chunks 
+def transcribe_chunk_groq_or_whisper(chunk_path: str, language: str = "english") -> str:
+    """Try Groq cloud Whisper first; fallback to local Whisper if Groq fails or is not configured."""
+    groq_key = os.getenv("GROQ_API_KEY")
+    if groq_key:
+        try:
+            print(f"[transcriber] Transcribing chunk via Groq Whisper ({os.path.basename(chunk_path)})...")
+            t0 = time.time()
+            text = transcribe_chunk_groq(chunk_path, language=language)
+            print(f"[transcriber] Groq transcription completed in {time.time() - t0:.2f}s.")
+            return text
+        except Exception as e:
+            print(f"[transcriber] Groq Whisper failed ({e}). Falling back to local Whisper...")
+    
+    print(f"[transcriber] Using local Whisper for chunk {os.path.basename(chunk_path)}...")
+    t0 = time.time()
+    text = transcribe_chunk_whisper(chunk_path, language=language)
+    print(f"[transcriber] Local Whisper completed in {time.time() - t0:.2f}s.")
+    return text
+
 def transcribe_chunk(chunk_path: str, language: str = "english") -> str:
     """
-    Route one chunk to Whisper or Sarvam depending on language choice.
-    - english  → Whisper (local model)
-    - hinglish → Sarvam (translates to English while transcribing)
+    Route audio chunk to appropriate engine:
+    - hinglish with SARVAM_API_KEY → Sarvam AI
+    - english or general → Groq Whisper Turbo (with local Whisper fallback)
     """
-    if language.lower() == "hinglish":
+    if language and language.lower() == "hinglish" and os.getenv("SARVAM_API_KEY"):
         return transcribe_chunk_sarvam(chunk_path)
     else:
-        return transcribe_chunk_whisper(chunk_path, language=language)
+        return transcribe_chunk_groq_or_whisper(chunk_path, language=language)
 
-## transcribe whole audio 
-def transcribe_all(chunks: list, language: str = "english") -> str:
-    full_transcript = ""
-    engine = "Sarvam AI" if language.lower() == "hinglish" else "Whisper"
-    print(f"Using {engine} for transcription of {len(chunks)} chunk(s)...")
+def transcribe_all(chunks: list, language: str = "english", progress_callback=None) -> str:
+    """
+    Transcribes all audio chunks. Supports optional progress_callback(chunk_idx, total_chunks, partial_text).
+    """
+    if not chunks:
+        return ""
 
-    for i, chunk in enumerate(chunks):
-        print(f"Transcribing chunk {i+1}/{len(chunks)}...")
-        text = transcribe_chunk(chunk, language=language)
-        full_transcript += text + " "
+    engine_name = get_stt_engine_name(language)
+    total = len(chunks)
+    print(f"[transcriber] Using {engine_name} for transcription of {total} chunk(s)...")
 
-    print("Transcription complete.")
-    return full_transcript.strip()
+    # If using Groq and multiple chunks, transcribe concurrently for even faster results
+    groq_key = os.getenv("GROQ_API_KEY")
+    can_parallel = bool(groq_key and total > 1 and not (language.lower() == "hinglish" and os.getenv("SARVAM_API_KEY")))
+
+    if can_parallel:
+        print(f"[transcriber] Transcribing {total} chunks concurrently with Groq...")
+        def _worker(item):
+            idx, c_path = item
+            txt = transcribe_chunk_groq_or_whisper(c_path, language=language)
+            if progress_callback:
+                try:
+                    progress_callback(idx + 1, total, txt)
+                except Exception:
+                    pass
+            return (idx, txt)
+
+        items = list(enumerate(chunks))
+        with ThreadPoolExecutor(max_workers=min(4, total)) as executor:
+            results = list(executor.map(_worker, items))
+        results.sort(key=lambda x: x[0])
+        full_transcript = " ".join(r[1] for r in results if r[1]).strip()
+    else:
+        full_transcript_parts = []
+        for i, chunk in enumerate(chunks):
+            print(f"[transcriber] Transcribing chunk {i + 1}/{total}...")
+            text = transcribe_chunk(chunk, language=language)
+            full_transcript_parts.append(text)
+            if progress_callback:
+                try:
+                    progress_callback(i + 1, total, text)
+                except Exception:
+                    pass
+        full_transcript = " ".join(full_transcript_parts).strip()
+
+    print(f"[transcriber] Full transcription complete ({len(full_transcript.split())} words).")
+    return full_transcript
+
     
