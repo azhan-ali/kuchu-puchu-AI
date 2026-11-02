@@ -47,8 +47,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
-templates = Jinja2Templates(directory="app/templates")
+# Configure static & template directories (supports both frontend/ and app/ for unified and separate deployments)
+STATIC_DIR = "frontend/static" if os.path.exists("frontend/static") else "app/static"
+TEMPLATES_DIR = "frontend" if os.path.exists("frontend/index.html") else "app/templates"
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 @app.get("/health")
 @app.get("/api/health")

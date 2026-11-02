@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Kuchu Puchu AI — Understand any video or meeting in minutes.</title>
     <link rel="icon" type="image/jpeg" href="/static/img/logo.jpg">
+    <!-- Render Backend API Configuration (for separate frontend & backend deployments) -->
+    <script>
+        // When deploying frontend and backend separately on Render:
+        // Set this to your Render backend Web Service URL (e.g. "https://kuchu-puchu-ai-backend.onrender.com").
+        // Leave empty ("") for same-origin / local development:
+        window.BACKEND_API_URL = "";
+    </script>
     
     <!-- Cerebri Sans & Hand-drawn Typography -->
     <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/cerebri-sans">

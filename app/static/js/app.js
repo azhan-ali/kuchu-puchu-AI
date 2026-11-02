@@ -1,4 +1,76 @@
+// ── Kuchu Puchu AI: Render Backend API Resolution ─────────────────────────────
+// Supports both same-origin (monolithic/local) and separate Render deployments.
+function getApiBaseUrl() {
+    let url = (window.BACKEND_API_URL || localStorage.getItem('kuchu_backend_api_url') || '').trim();
+    if (url.endsWith('/')) {
+        url = url.slice(0, -1);
+    }
+    return url;
+}
+
+function getApiUrl(endpoint) {
+    const base = getApiBaseUrl();
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    return base ? `${base}${cleanEndpoint}` : cleanEndpoint;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    // 0. Backend Health & Quick URL Configuration Indicator
+    const liveIndicator = document.querySelector('.nav-live-indicator');
+    if (liveIndicator) {
+        const checkHealth = async () => {
+            const base = getApiBaseUrl();
+            const healthUrl = getApiUrl('/health');
+            try {
+                const ctrl = new AbortController();
+                const timeoutId = setTimeout(() => ctrl.abort(), 6000);
+                const res = await fetch(healthUrl, { method: 'GET', signal: ctrl.signal });
+                clearTimeout(timeoutId);
+                if (res.ok) {
+                    liveIndicator.classList.remove('status-offline', 'status-waking');
+                    liveIndicator.classList.add('status-online');
+                    liveIndicator.title = `AI Engine Online & Connected (${base || 'same-origin'})`;
+                } else {
+                    liveIndicator.classList.remove('status-online');
+                    liveIndicator.classList.add('status-waking');
+                    liveIndicator.title = `Backend returned ${res.status}. Initializing...`;
+                }
+            } catch (err) {
+                liveIndicator.classList.remove('status-online');
+                liveIndicator.classList.add('status-waking');
+                liveIndicator.title = base 
+                    ? `Connecting to Render Backend (${base}). Service may be spinning up from sleep (~50s). Click to change.`
+                    : "Backend connecting / waking up. Click to configure Render Backend URL.";
+            }
+        };
+
+        checkHealth();
+        setInterval(checkHealth, 45000);
+
+        liveIndicator.style.cursor = 'pointer';
+        liveIndicator.addEventListener('click', () => {
+            const currentUrl = getApiBaseUrl();
+            const newUrl = prompt(
+                'Render Backend API Configuration:\n\n' +
+                'Enter your Render backend Web Service URL (e.g. https://kuchu-puchu-ai-backend.onrender.com)\n' +
+                'Leave empty for same-origin (monolithic / local):',
+                currentUrl
+            );
+            if (newUrl !== null) {
+                const trimmed = newUrl.trim().replace(/\/+$/, '');
+                if (trimmed) {
+                    localStorage.setItem('kuchu_backend_api_url', trimmed);
+                    window.BACKEND_API_URL = trimmed;
+                } else {
+                    localStorage.removeItem('kuchu_backend_api_url');
+                    window.BACKEND_API_URL = '';
+                }
+                checkHealth();
+                alert(`Backend API URL configured as: ${trimmed || 'Same-origin relative paths'}`);
+            }
+        });
+    }
+
     // 1. Tab Switching Logic
     const tabBtns = document.querySelectorAll('.tab-btn');
     const tabContents = document.querySelectorAll('.tab-content');
@@ -398,7 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
             startPipelineTimer();
 
             try {
-                const response = await fetch('/api/process', {
+                const response = await fetch(getApiUrl('/api/process'), {
                     method: 'POST',
                     headers: {
                         'Accept': 'text/event-stream'
@@ -532,7 +604,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 let displayMsg = error.message || 'An unexpected error occurred during analysis.';
                 const lowerMsg = displayMsg.toLowerCase();
                 if (lowerMsg.includes('failed to fetch') || lowerMsg.includes('networkerror') || lowerMsg.includes('network error')) {
-                    displayMsg = 'Network connection was interrupted or timed out. If you were analyzing a remote YouTube video, YouTube may be restricting datacenter access—please try uploading the audio or video file directly.';
+                    const base = getApiBaseUrl();
+                    if (base) {
+                        displayMsg = `Could not connect to the Render Backend at ${base}. Render free tier services spin down after 15 minutes of inactivity and take ~50 seconds to wake up. Please wait a minute and try again.`;
+                    } else {
+                        displayMsg = 'Network connection was interrupted or timed out. If you were analyzing a remote YouTube video, YouTube may be restricting datacenter access—please try uploading the audio or video file directly.';
+                    }
                 }
                 alert('Analysis Error: ' + displayMsg);
                 loadingSection.classList.add('hidden');
@@ -957,7 +1034,7 @@ document.addEventListener('DOMContentLoaded', () => {
             addThinkingBubble(thinkingId);
 
             try {
-                const res = await fetch('/api/chat', {
+                const res = await fetch(getApiUrl('/api/chat'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
