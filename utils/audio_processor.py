@@ -34,6 +34,27 @@ if ffmpeg_exe and ffmpeg_exe != "ffmpeg":
     AudioSegment.converter = ffmpeg_exe
 
 
+def get_js_runtimes() -> dict:
+    """
+    Detect available JavaScript runtimes for yt-dlp (Deno, Node.js).
+    Deno is yt-dlp's primary, default-supported EJS challenge solver.
+    """
+    runtimes = {}
+    # 1. Deno (primary & default for yt-dlp EJS challenge solver)
+    for p in [shutil.which("deno"), "/usr/local/bin/deno", "/usr/bin/deno", os.path.expanduser("~/.deno/bin/deno")]:
+        if p and (os.path.exists(p) or shutil.which(p)):
+            runtimes["deno"] = {"path": p}
+            break
+
+    # 2. Node.js (secondary fallback)
+    for p in [shutil.which("node"), shutil.which("nodejs"), "/usr/local/bin/node", "/usr/bin/node", "/usr/bin/nodejs"]:
+        if p and (os.path.exists(p) or shutil.which(p)):
+            runtimes["node"] = {"path": p}
+            break
+
+    return runtimes
+
+
 def normalize_cookie_text(content: str) -> str:
     """
     Normalizes cookies from raw text, escaped newlines, or JSON arrays (from Chrome extensions like
@@ -180,8 +201,7 @@ def extract_youtube_subtitles(url: str, cookie_file: str | None = None) -> str |
             print(f"[audio_processor] YouTubeTranscriptApi notice: {e}")
 
     # ── Strategy 2: yt-dlp timedtext metadata fallback ──────────────────────
-    node_exe = shutil.which("node") or shutil.which("nodejs") or "/usr/bin/node" or "/usr/bin/nodejs"
-    js_runtimes = {"node": {"path": node_exe}} if (node_exe and (os.path.exists(node_exe) or shutil.which(node_exe))) else {}
+    js_runtimes = get_js_runtimes()
 
     opts = {
         "skip_download": True,
@@ -191,7 +211,7 @@ def extract_youtube_subtitles(url: str, cookie_file: str | None = None) -> str |
         "no_warnings": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["tv_embedded", "web", "mweb"]
+                "player_client": ["android", "web", "mweb"]
             }
         }
     }
@@ -265,11 +285,10 @@ def _build_ydl_opts(output_template: str, player_clients: list | None, cookie_fi
     """
     Constructs robust yt-dlp options with:
     - Broad format selector: allows 360p/480p MP4 if YouTube omits pure audio URLs (SABR experiment).
-    - Node.js runtime detection to solve YouTube n-challenge signatures.
+    - JavaScript runtime detection (Deno/Node.js) to solve YouTube challenge signatures.
     - Automatic FFmpeg extraction to 16kHz mono WAV.
     """
-    node_exe = shutil.which("node") or shutil.which("nodejs") or "/usr/bin/node" or "/usr/bin/nodejs"
-    js_runtimes = {"node": {"path": node_exe}} if (node_exe and (os.path.exists(node_exe) or shutil.which(node_exe))) else {}
+    js_runtimes = get_js_runtimes()
 
     opts = {
         # If pure audio (bestaudio/ba) has omitted URLs, fall back to composite MP4 (format 18)
@@ -309,12 +328,12 @@ def _build_ydl_opts(output_template: str, player_clients: list | None, cookie_fi
 def download_youtube_audio(url: str) -> str:
     """
     Downloads audio from a YouTube URL.
-    Cycles through robust client strategies:
-    1. tv_embedded (most reliable for datacenter environments)
-    2. android_creator
-    3. mweb
-    4. web
-    5. ios
+    Cycles through robust client strategies using real Innertube clients:
+    1. android (reliable mobile API)
+    2. web_embedded (designed for embed players without strict bot-gating)
+    3. mweb (mobile web player)
+    4. ios (iOS app client)
+    5. web (standard web player with EJS challenge solver)
     6. default yt-dlp selection
     """
     output_template = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
@@ -322,13 +341,13 @@ def download_youtube_audio(url: str) -> str:
     if cookie_file:
         print("[audio_processor] Authenticated YouTube session detected (cookiefile enabled).")
 
-    # Client strategies that avoid the broken Android player response bug
+    # Client strategies using valid yt-dlp INNERTUBE_CLIENTS
     client_strategies = [
-        ["tv_embedded"],
-        ["android_creator"],
+        ["android"],
+        ["web_embedded"],
         ["mweb"],
-        ["web"],
         ["ios"],
+        ["web"],
         None  # Default yt-dlp client selection
     ]
 

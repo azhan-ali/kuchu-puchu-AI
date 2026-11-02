@@ -8,11 +8,12 @@ jinja2>=3.1.4
 python-multipart>=0.0.9
 
 # ── Audio / Video Acquisition ─────────────────────────────────────────────────
-yt-dlp>=2026.10.26                 # Download audio from YouTube URLs (latest release)
-youtube-transcript-api>=1.2.4     # Direct timedtext captions extraction (fast & immune to datacenter blocks)
-pydub>=0.25.1                     # Audio file manipulation & format conversion
-ffmpeg-python>=0.2.0              # FFmpeg bindings (FFmpeg binary required on system)
-imageio-ffmpeg>=0.5.1             # Fallback static FFmpeg binary
+yt-dlp[default]>=2025.01.01           # Download audio from YouTube URLs with all crypto & EJS dependencies
+yt-dlp-ejs>=0.8.0                     # External JavaScript challenge solver for YouTube player responses
+youtube-transcript-api>=1.2.4         # Direct timedtext captions extraction (fast & immune to datacenter blocks)
+pydub>=0.25.1                         # Audio file manipulation & format conversion
+ffmpeg-python>=0.2.0                  # FFmpeg bindings (FFmpeg binary required on system)
+imageio-ffmpeg>=0.5.1                 # Fallback static FFmpeg binary
 
 # ── Speech-to-Text ────────────────────────────────────────────────────────────
 openai-whisper>=20231117          # OpenAI Whisper (local STT)

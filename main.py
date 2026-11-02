@@ -57,10 +57,18 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 @app.get("/health")
 @app.get("/api/health")
 async def health_check():
+    import yt_dlp.version
+    from utils.audio_processor import get_js_runtimes, get_ffmpeg_binary
+
+    runtimes = get_js_runtimes()
     return {
         "status": "healthy",
         "service": "Kuchu Puchu AI",
-        "version": "1.0.0",
+        "version": "1.0.1",
+        "yt_dlp_version": getattr(yt_dlp.version, "__version__", "unknown"),
+        "deno_available": "deno" in runtimes,
+        "node_available": "node" in runtimes,
+        "ffmpeg_available": bool(get_ffmpeg_binary()),
         "environment": os.environ.get("ENVIRONMENT", "production")
     }
 

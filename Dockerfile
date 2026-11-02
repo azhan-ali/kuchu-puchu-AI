@@ -14,13 +14,16 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install system dependencies (FFmpeg for video/audio extraction, nodejs as JS runtime for yt-dlp, curl for health checks)
+# Install system dependencies (FFmpeg for video/audio extraction, Deno & Node.js as JS runtimes for yt-dlp, curl, unzip)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
+    unzip \
     nodejs \
     ca-certificates \
     && (which node > /dev/null 2>&1 || ln -s /usr/bin/nodejs /usr/bin/node || true) \
+    && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
+    && (which deno > /dev/null 2>&1 || ln -s /usr/local/bin/deno /usr/bin/deno || true) \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip and packaging tools
@@ -29,10 +32,10 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # Pre-install CPU-only PyTorch and torchaudio to prevent pulling multi-GB CUDA binaries
 RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
-# Install project Python dependencies and ensure latest yt-dlp is installed
+# Install project Python dependencies and ensure latest yt-dlp with default extras is installed
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir --upgrade yt-dlp
+    && pip install --no-cache-dir --upgrade "yt-dlp[default]" yt-dlp-ejs
 
 # Copy application source code
 COPY . .
