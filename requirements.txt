@@ -8,7 +8,8 @@ jinja2>=3.1.4
 python-multipart>=0.0.9
 
 # ── Audio / Video Acquisition ─────────────────────────────────────────────────
-yt-dlp>=2024.4.9                  # Download audio from YouTube URLs
+yt-dlp>=2026.10.26                 # Download audio from YouTube URLs (latest release)
+youtube-transcript-api>=1.2.4     # Direct timedtext captions extraction (fast & immune to datacenter blocks)
 pydub>=0.25.1                     # Audio file manipulation & format conversion
 ffmpeg-python>=0.2.0              # FFmpeg bindings (FFmpeg binary required on system)
 imageio-ffmpeg>=0.5.1             # Fallback static FFmpeg binary

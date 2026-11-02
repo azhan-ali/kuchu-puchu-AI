@@ -20,17 +20,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     nodejs \
     ca-certificates \
+    && (which node > /dev/null 2>&1 || ln -s /usr/bin/nodejs /usr/bin/node || true) \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip
-RUN pip install --no-cache-dir --upgrade pip
+# Upgrade pip and packaging tools
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Pre-install CPU-only PyTorch and torchaudio to prevent pulling multi-GB CUDA binaries
 RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
-# Install project Python dependencies
+# Install project Python dependencies and ensure latest yt-dlp is installed
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir --upgrade yt-dlp
 
 # Copy application source code
 COPY . .

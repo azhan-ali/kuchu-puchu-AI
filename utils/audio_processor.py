@@ -1,4 +1,5 @@
 import os 
+import re
 import wave
 import subprocess
 import shutil
@@ -124,19 +125,78 @@ def get_youtube_cookiefile() -> str | None:
     return None
 
 
+def extract_youtube_video_id(url: str) -> str | None:
+    """Extract standard 11-char YouTube video ID from various URL formats or raw ID."""
+    if not url:
+        return None
+    url = url.strip()
+    if len(url) == 11 and re.match(r'^[A-Za-z0-9_-]{11}$', url):
+        return url
+    patterns = [
+        r'(?:v=|\/v\/|youtu\.be\/|\/embed\/|\/shorts\/|\/live\/|\/watch\?v=|\/watch\?.+&v=)([^#\&\?]{11})',
+        r'youtu\.be\/([^#\&\?]{11})',
+        r'youtube\.com\/shorts\/([^#\&\?]{11})',
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, url)
+        if m:
+            return m.group(1)
+    return None
+
+
 def extract_youtube_subtitles(url: str, cookie_file: str | None = None) -> str | None:
     """
-    Fetches official or auto-generated YouTube captions directly from timedtext API.
-    Zero audio download overhead, 100% immune to media stream datacenter bot blocking.
+    Fetches official or auto-generated YouTube captions directly.
+    1. Primary method: YouTubeTranscriptApi (pure HTTP, zero media download, immune to datacenter blocks)
+    2. Fallback method: yt-dlp timedtext scraping
     """
+    video_id = extract_youtube_video_id(url)
+    
+    # ── Strategy 1: YouTubeTranscriptApi (Fastest, immune to player response crashes) ──
+    if video_id:
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+            api = YouTubeTranscriptApi()
+            transcript_list = api.list(video_id)
+            
+            transcript = None
+            try:
+                transcript = transcript_list.find_transcript(['en', 'en-US', 'en-GB', 'hi', 'hi-Latn'])
+            except Exception:
+                for t in transcript_list:
+                    transcript = t
+                    break
+
+            if transcript:
+                fetched = transcript.fetch()
+                text_snippets = []
+                for s in fetched.snippets if hasattr(fetched, 'snippets') else fetched:
+                    text_snippets.append(getattr(s, 'text', '') if hasattr(s, 'text') else (s.get('text', '') if isinstance(s, dict) else str(s)))
+                full_text = " ".join(text_snippets).strip()
+                if full_text:
+                    print(f"[audio_processor] Direct transcript extracted via YouTubeTranscriptApi ({len(full_text)} chars).")
+                    return full_text
+        except Exception as e:
+            print(f"[audio_processor] YouTubeTranscriptApi notice: {e}")
+
+    # ── Strategy 2: yt-dlp timedtext metadata fallback ──────────────────────
+    node_exe = shutil.which("node") or shutil.which("nodejs") or "/usr/bin/node" or "/usr/bin/nodejs"
+    js_runtimes = {"node": {"path": node_exe}} if (node_exe and (os.path.exists(node_exe) or shutil.which(node_exe))) else {}
+
     opts = {
         "skip_download": True,
         "writesubtitles": True,
         "writeautomaticsub": True,
         "quiet": True,
         "no_warnings": True,
-        "js_runtimes": {"node": {}, "deno": {}}
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["tv_embedded", "web", "mweb"]
+            }
+        }
     }
+    if js_runtimes:
+        opts["js_runtimes"] = js_runtimes
     if cookie_file and os.path.exists(cookie_file):
         opts["cookiefile"] = cookie_file
 
@@ -188,7 +248,7 @@ def extract_youtube_subtitles(url: str, cookie_file: str | None = None) -> str |
                             text_parts.append(seg.get("utf8", ""))
                     full_text = "".join(text_parts).strip()
                     if full_text:
-                        print(f"[audio_processor] Direct YouTube transcript extracted successfully ({len(full_text)} chars).")
+                        print(f"[audio_processor] Direct YouTube transcript extracted via yt-dlp ({len(full_text)} chars).")
                         return full_text
                 else:
                     raw_text = resp.text.strip()
@@ -205,18 +265,17 @@ def _build_ydl_opts(output_template: str, player_clients: list | None, cookie_fi
     """
     Constructs robust yt-dlp options with:
     - Broad format selector: allows 360p/480p MP4 if YouTube omits pure audio URLs (SABR experiment).
-    - Node.js / Deno JS runtimes to solve YouTube n-challenge signatures.
+    - Node.js runtime detection to solve YouTube n-challenge signatures.
     - Automatic FFmpeg extraction to 16kHz mono WAV.
     """
+    node_exe = shutil.which("node") or shutil.which("nodejs") or "/usr/bin/node" or "/usr/bin/nodejs"
+    js_runtimes = {"node": {"path": node_exe}} if (node_exe and (os.path.exists(node_exe) or shutil.which(node_exe))) else {}
+
     opts = {
-        # Crucial: if pure audio (bestaudio/ba) has omitted URLs, fall back to composite MP4 (format 18)
+        # If pure audio (bestaudio/ba) has omitted URLs, fall back to composite MP4 (format 18)
         "format": "bestaudio/ba/b[ext=mp4]/b[height<=480]/18/best",
         "outtmpl": output_template,
         "noplaylist": True,
-        "js_runtimes": {
-            "node": {},
-            "deno": {}
-        },
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -234,6 +293,8 @@ def _build_ydl_opts(output_template: str, player_clients: list | None, cookie_fi
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         }
     }
+    if js_runtimes:
+        opts["js_runtimes"] = js_runtimes
     if player_clients:
         opts["extractor_args"] = {
             "youtube": {
@@ -248,19 +309,26 @@ def _build_ydl_opts(output_template: str, player_clients: list | None, cookie_fi
 def download_youtube_audio(url: str) -> str:
     """
     Downloads audio from a YouTube URL.
-    Cycles through client strategies (android -> tv+android -> ios+android -> default).
-    If audio download fails on datacenter IPs, falls back to direct YouTube captions.
+    Cycles through robust client strategies:
+    1. tv_embedded (most reliable for datacenter environments)
+    2. android_creator
+    3. mweb
+    4. web
+    5. ios
+    6. default yt-dlp selection
     """
     output_template = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
     cookie_file = get_youtube_cookiefile()
     if cookie_file:
         print("[audio_processor] Authenticated YouTube session detected (cookiefile enabled).")
 
-    # Client strategies tested against YouTube anti-bot & SABR restrictions
+    # Client strategies that avoid the broken Android player response bug
     client_strategies = [
-        ["android"],
-        ["tv", "android"],
-        ["ios", "android"],
+        ["tv_embedded"],
+        ["android_creator"],
+        ["mweb"],
+        ["web"],
+        ["ios"],
         None  # Default yt-dlp client selection
     ]
 
@@ -417,12 +485,25 @@ def chunk_audio(wav_path: str, chunk_minutes: int = 10) -> list:
 def process_input(source: str) -> list:
     """
     Process input source (YouTube URL or uploaded media file).
-    Returns list of paths:
-    - If audio extracted: list of WAV audio chunks ready for Whisper
-    - If direct captions used: list containing single transcript .txt file
+    For YouTube URLs:
+    1. Checks for instant direct captions first (fastest, zero bandwidth, immune to cloud IP blocks)
+    2. Falls back to downloading audio and slicing into 16kHz WAV chunks for Whisper
     """
     if source.startswith("http://") or source.startswith("https://"):
         print(f"[audio_processor] Processing remote URL source: {source}")
+        
+        # Check direct captions first (completes in ~0.5s and bypasses datacenter blocks)
+        direct_transcript = extract_youtube_subtitles(source)
+        if direct_transcript:
+            import hashlib
+            h = hashlib.md5(source.encode()).hexdigest()[:8]
+            transcript_file = os.path.join(DOWNLOAD_DIR, f"yt_{h}_transcript.txt")
+            with open(transcript_file, "w", encoding="utf-8") as f:
+                f.write(direct_transcript)
+            print(f"[audio_processor] Direct verified transcript saved: {transcript_file}")
+            return [transcript_file]
+
+        # If direct captions not available, download audio streams
         extracted_path = download_youtube_audio(source)
     else:
         print(f"[audio_processor] Processing local media upload: {source}")
