@@ -38,13 +38,52 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Kuchu Puchu AI")
 
-# Configure CORS for flexible deployment
+# Configure CORS for flexible deployment (supports same-origin and separate frontend/backend on Render)
+frontend_url_env = os.environ.get("FRONTEND_URL", "").strip()
+allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "").strip()
+
+# Base trusted origins for local development and common preview ports
+default_origins = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+]
+
+allowed_origins = list(default_origins)
+
+# Add configured FRONTEND_URL(s)
+if frontend_url_env:
+    for origin in frontend_url_env.split(","):
+        origin = origin.strip().rstrip("/")
+        if origin and origin not in allowed_origins:
+            allowed_origins.append(origin)
+
+# Add configured ALLOWED_ORIGINS
+if allowed_origins_env:
+    for origin in allowed_origins_env.split(","):
+        origin = origin.strip().rstrip("/")
+        if origin and origin not in allowed_origins:
+            allowed_origins.append(origin)
+
+# Permissive origin handling: allow all if specified or by default while retaining credentials
+if "*" in allowed_origins or allowed_origins_env == "*" or (not frontend_url_env and not allowed_origins_env):
+    cors_origins = ["*"]
+else:
+    cors_origins = allowed_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
+    allow_origin_regex=r"^https:\/\/.*\.onrender\.com$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Configure static & template directories (supports both frontend/ and app/ for unified and separate deployments)
@@ -82,7 +121,11 @@ class ChatRequest(BaseModel):
 
 @app.get("/")
 async def read_root(request: Request):
-    return templates.TemplateResponse(request=request, name="index.html")
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"backend_api_url": os.environ.get("BACKEND_API_URL", "")}
+    )
 
 import json
 import asyncio

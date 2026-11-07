@@ -1,10 +1,76 @@
 // ── Kuchu Puchu AI: Render Backend API Resolution ─────────────────────────────
-// Supports both same-origin (monolithic/local) and separate Render deployments.
+// Supports same-origin (monolithic/local), separate Render deployments,
+// query parameters (?api= / ?backend=), and automatic Render domain pairing.
 function getApiBaseUrl() {
-    let url = (window.BACKEND_API_URL || localStorage.getItem('kuchu_backend_api_url') || '').trim();
-    if (url.endsWith('/')) {
-        url = url.slice(0, -1);
+    // 1. Check URL query override (?api=... or ?backend=...) and persist to localStorage if provided
+    try {
+        if (typeof window !== 'undefined' && window.location && window.location.search) {
+            const params = new URLSearchParams(window.location.search);
+            const queryApi = params.get('api') || params.get('backend');
+            if (queryApi && queryApi.trim()) {
+                let cleanQuery = queryApi.trim();
+                if (!/^https?:\/\//i.test(cleanQuery)) {
+                    cleanQuery = (cleanQuery.startsWith('localhost') || cleanQuery.startsWith('127.0.0.1'))
+                        ? 'http://' + cleanQuery
+                        : 'https://' + cleanQuery;
+                }
+                cleanQuery = cleanQuery.replace(/\/+$/, '');
+                localStorage.setItem('kuchu_backend_api_url', cleanQuery);
+                window.BACKEND_API_URL = cleanQuery;
+                return cleanQuery;
+            }
+        }
+    } catch (_) {}
+
+    // 2. Check manual user override in localStorage
+    try {
+        const stored = (localStorage.getItem('kuchu_backend_api_url') || '').trim();
+        if (stored) {
+            return stored.replace(/\/+$/, '');
+        }
+    } catch (_) {}
+
+    // 3. Check window.BACKEND_API_URL or build-time window.__ENV__.BACKEND_API_URL
+    let url = (
+        (window.BACKEND_API_URL || '') ||
+        (window.__ENV__ && (window.__ENV__.BACKEND_API_URL || window.__ENV__.API_BASE_URL)) ||
+        ''
+    ).trim();
+
+    // 4. Check HTML meta tag <meta name="backend-api-url" content="...">
+    if (!url && typeof document !== 'undefined') {
+        const metaTag = document.querySelector('meta[name="backend-api-url"]');
+        if (metaTag && metaTag.content && metaTag.content.trim()) {
+            url = metaTag.content.trim();
+        }
     }
+
+    // 5. Intelligent Automatic Domain Resolution for Render and local deployments:
+    if (!url && typeof window !== 'undefined' && window.location) {
+        const hostname = window.location.hostname || '';
+        // If hosted on Render (e.g. https://<app>-frontend.onrender.com), automatically target https://<app>-backend.onrender.com
+        if (hostname.endsWith('.onrender.com') && hostname.includes('-frontend')) {
+            const backendHost = hostname.replace('-frontend', '-backend');
+            url = `https://${backendHost}`;
+        } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            // If running on a separate frontend port (e.g. :3000, :5500, :5173), target backend default port 8000
+            const port = window.location.port;
+            if (port && port !== '8000' && port !== '10000') {
+                url = `http://${hostname}:8000`;
+            }
+        }
+    }
+
+    // Normalize: prepend protocol if missing, strip trailing slashes
+    if (url) {
+        if (!/^https?:\/\//i.test(url)) {
+            url = (url.startsWith('localhost') || url.startsWith('127.0.0.1'))
+                ? `http://${url}`
+                : `https://${url}`;
+        }
+        url = url.replace(/\/+$/, '');
+    }
+
     return url;
 }
 

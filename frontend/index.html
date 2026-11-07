@@ -6,11 +6,14 @@
     <title>Kuchu Puchu AI — Understand any video or meeting in minutes.</title>
     <link rel="icon" type="image/jpeg" href="/static/img/logo.jpg">
     <!-- Render Backend API Configuration (for separate frontend & backend deployments) -->
+    <meta name="backend-api-url" content="">
+    <script src="/static/js/env.js"></script>
     <script>
         // When deploying frontend and backend separately on Render:
-        // Set this to your Render backend Web Service URL (e.g. "https://kuchu-puchu-ai-backend.onrender.com").
-        // Leave empty ("") for same-origin / local development:
-        window.BACKEND_API_URL = "";
+        // BACKEND_API_URL can be set via Render static site environment variables (injected into env.js),
+        // or specified directly below (e.g. "https://kuchu-puchu-ai-backend.onrender.com").
+        // Leave empty ("") for automatic Render domain pairing or same-origin / local development:
+        window.BACKEND_API_URL = (window.__ENV__ && window.__ENV__.BACKEND_API_URL) || window.BACKEND_API_URL || "";
     </script>
     
     <!-- Cerebri Sans & Hand-drawn Typography -->

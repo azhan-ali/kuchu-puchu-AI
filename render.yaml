@@ -31,13 +31,20 @@ services:
         sync: false
       - key: HUGGINGFACE_API_KEY
         sync: false
+      - key: FRONTEND_URL
+        value: https://kuchu-puchu-ai-frontend.onrender.com
+      - key: ALLOWED_ORIGINS
+        value: https://kuchu-puchu-ai-frontend.onrender.com,http://localhost:3000,http://localhost:8000
 
   # ── 2. Frontend Static Site ─────────────────────────────
   - type: static
     name: kuchu-puchu-ai-frontend
-    buildCommand: "" # Pure HTML/CSS/JS requires no build step
+    buildCommand: "node ./scripts/generate-env.js"
     staticPublishPath: ./frontend
     autoDeploy: true
+    envVars:
+      - key: BACKEND_API_URL
+        value: https://kuchu-puchu-ai-backend.onrender.com
     routes:
       - type: rewrite
         source: /*
