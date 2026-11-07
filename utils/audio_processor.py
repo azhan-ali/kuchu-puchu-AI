@@ -427,6 +427,118 @@ def extract_youtube_subtitles(url: str, cookie_file: str | None = None) -> str |
     except Exception as e:
         print(f"[audio_processor] YouTube direct caption extraction notice: {e}")
 
+    # ── Strategy 3: Distributed Invidious mirror transcript fallback ────────
+    if video_id:
+        invidious_text = extract_invidious_transcript(video_id)
+        if invidious_text:
+            return invidious_text
+
+    return None
+
+
+def extract_invidious_transcript(video_id: str) -> str | None:
+    """
+    Fetches captions via public Invidious mirror instances to bypass YouTube cloud datacenter IP blocks.
+    """
+    instances = [
+        "https://yt.chocolatemoo53.com",
+        "https://inv.nadeko.net",
+        "https://invidious.perennialte.ch"
+    ]
+    for inst in instances:
+        try:
+            r = requests.get(f"{inst}/api/v1/videos/{video_id}", timeout=5)
+            if r.status_code != 200:
+                continue
+            data = r.json()
+            captions = data.get("captions", [])
+            if not captions:
+                continue
+
+            target_cap = None
+            for c in captions:
+                lang = (c.get("languageCode") or c.get("label") or "").lower()
+                if "en" in lang or "english" in lang:
+                    target_cap = c
+                    break
+            if not target_cap:
+                target_cap = captions[0]
+
+            cap_url = target_cap.get("url")
+            if not cap_url:
+                continue
+            if cap_url.startswith("/"):
+                cap_url = f"{inst}{cap_url}"
+
+            cap_r = requests.get(cap_url, timeout=6)
+            if cap_r.status_code == 200:
+                lines = []
+                for line in cap_r.text.splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("WEBVTT") or line.startswith("Kind:") or line.startswith("Language:") or "-->" in line or line.isdigit():
+                        continue
+                    clean = re.sub(r'<[^>]+>', '', line)
+                    if clean and (not lines or lines[-1] != clean):
+                        lines.append(clean)
+                full_text = " ".join(lines).strip()
+                if full_text:
+                    print(f"[audio_processor] Direct transcript extracted via Invidious mirror ({inst}) ({len(full_text)} chars).")
+                    return full_text
+        except Exception as e:
+            print(f"[audio_processor] Invidious transcript notice ({inst}): {e}")
+            continue
+
+    return None
+
+
+def download_invidious_audio(video_id: str, progress_callback=None) -> str | None:
+    """
+    Downloads raw audio stream from an Invidious mirror when YouTube blocks cloud datacenter IPs.
+    """
+    instances = [
+        "https://yt.chocolatemoo53.com",
+        "https://inv.nadeko.net"
+    ]
+    downloads_dir = get_download_dir()
+
+    for inst in instances:
+        try:
+            if progress_callback:
+                progress_callback(f"Connecting to media proxy mirror ({inst})...", 11)
+            r = requests.get(f"{inst}/api/v1/videos/{video_id}", timeout=6)
+            if r.status_code != 200:
+                continue
+            data = r.json()
+            audio_formats = [f for f in data.get("adaptiveFormats", []) if "audio" in f.get("type", "")]
+            if not audio_formats:
+                continue
+
+            audio_formats.sort(key=lambda x: int(x.get("bitrate", 0)), reverse=True)
+            stream_url = audio_formats[0].get("url")
+            if not stream_url:
+                continue
+
+            raw_path = os.path.join(downloads_dir, f"yt_{video_id}_stream.m4a")
+            print(f"[audio_processor] Streaming audio from Invidious mirror: {inst}...")
+            with requests.get(stream_url, headers={"User-Agent": "Mozilla/5.0"}, stream=True, timeout=20) as stream_res:
+                stream_res.raise_for_status()
+                with open(raw_path, "wb") as f:
+                    for chunk in stream_res.iter_content(chunk_size=131072):
+                        f.write(chunk)
+
+            if os.path.exists(raw_path) and os.path.getsize(raw_path) > 1000:
+                print(f"[audio_processor] Downloaded {os.path.getsize(raw_path)} bytes from Invidious mirror. Converting to 16kHz WAV...")
+                wav_path = convert_to_wav(raw_path, progress_callback)
+                if os.path.exists(raw_path):
+                    try:
+                        os.remove(raw_path)
+                    except Exception:
+                        pass
+                return wav_path
+        except Exception as e:
+            print(f"[audio_processor] Invidious audio download notice on {inst}: {e}")
+            continue
+
     return None
 
 
@@ -573,7 +685,18 @@ def download_youtube_audio(url: str, progress_callback=None) -> str:
         print(f"[audio_processor] Direct transcript successfully saved to {transcript_file}.")
         return transcript_file
 
-    # If both audio download and captions were blocked
+    # If direct captions were not found, try downloading audio stream via Invidious mirror
+    vid_id = extract_youtube_video_id(url)
+    if vid_id:
+        print("[audio_processor] Attempting Invidious audio stream mirror fallback...")
+        if progress_callback:
+            progress_callback("Attempting media proxy mirror audio extraction...", 11)
+        invidious_wav = download_invidious_audio(vid_id, progress_callback)
+        if invidious_wav and os.path.exists(invidious_wav) and os.path.getsize(invidious_wav) > 0:
+            print(f"[audio_processor] Audio stream successfully extracted from Invidious mirror: {invidious_wav}")
+            return invidious_wav
+
+    # If all audio download and captions strategies failed
     err_lower = (last_error or "").lower()
     if "sign in to confirm you're not a bot" in err_lower or "bot" in err_lower or "403" in err_lower or "player response" in err_lower:
         raise RuntimeError(
