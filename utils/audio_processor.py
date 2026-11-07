@@ -206,20 +206,39 @@ def normalize_cookie_text(content: str) -> str:
 def get_youtube_cookiefile() -> str | None:
     """
     Safely resolves YouTube cookies for yt-dlp authentication from:
-    1. YOUTUBE_COOKIES_FILE env var (absolute or relative path to cookies file)
-    2. Local cookies.txt file in workspace root
-    3. YOUTUBE_COOKIES_BASE64 env var (base64-encoded Netscape cookies text)
-    4. YOUTUBE_COOKIES env var (raw Netscape cookies text or JSON array from Cookie-Editor)
+    1. Render Secret Files: /etc/secrets/cookies.txt, /etc/secrets/youtube_cookies.txt
+    2. YOUTUBE_COOKIES_FILE or YOUTUBE_COOKIES_PATH env var
+    3. Local cookies.txt, yt_cookies.txt, or youtube_cookies.txt in workspace root
+    4. YOUTUBE_COOKIES_BASE64 env var (base64-encoded Netscape cookies text)
+    5. YOUTUBE_COOKIES env var (raw Netscape cookies text or JSON array from Cookie-Editor)
     Returns the path to the verified cookie file or None.
     """
-    file_env = os.getenv("YOUTUBE_COOKIES_FILE")
-    if file_env and os.path.exists(file_env) and os.path.getsize(file_env) > 0:
-        return file_env
+    # 1. Render Secret Files (/etc/secrets)
+    secret_paths = [
+        "/etc/secrets/cookies.txt",
+        "/etc/secrets/youtube_cookies.txt",
+        "/etc/secrets/yt_cookies.txt"
+    ]
+    for sp in secret_paths:
+        if os.path.exists(sp) and os.path.getsize(sp) > 0:
+            print(f"[audio_processor] Using Render Secret File cookies: {sp}")
+            return sp
 
-    local_cookie = os.path.join(os.getcwd(), "cookies.txt")
-    if os.path.exists(local_cookie) and os.path.getsize(local_cookie) > 0:
-        return local_cookie
+    # 2. Explicit environment variables for file paths
+    for env_var in ["YOUTUBE_COOKIES_FILE", "YOUTUBE_COOKIES_PATH"]:
+        file_env = os.getenv(env_var)
+        if file_env and os.path.exists(file_env) and os.path.getsize(file_env) > 0:
+            print(f"[audio_processor] Using cookies file from {env_var}: {file_env}")
+            return file_env
 
+    # 3. Workspace cookies files
+    for local_name in ["cookies.txt", "yt_cookies.txt", "youtube_cookies.txt"]:
+        local_cookie = os.path.join(os.getcwd(), local_name)
+        if os.path.exists(local_cookie) and os.path.getsize(local_cookie) > 0:
+            print(f"[audio_processor] Using workspace cookies file: {local_cookie}")
+            return local_cookie
+
+    # 4. Base64 encoded cookies environment variable
     b64_cookies = os.getenv("YOUTUBE_COOKIES_BASE64")
     if b64_cookies and b64_cookies.strip():
         try:
@@ -228,10 +247,12 @@ def get_youtube_cookiefile() -> str | None:
             tmp_path = os.path.join(get_download_dir(), "yt_cookies.txt")
             with open(tmp_path, "w", encoding="utf-8") as f:
                 f.write(norm_content)
+            print(f"[audio_processor] Decoded YOUTUBE_COOKIES_BASE64 to {tmp_path}")
             return tmp_path
         except Exception as e:
             print(f"[audio_processor] Warning: Failed to decode YOUTUBE_COOKIES_BASE64: {e}")
 
+    # 5. Raw text or JSON cookies environment variable
     raw_cookies = os.getenv("YOUTUBE_COOKIES")
     if raw_cookies and raw_cookies.strip():
         try:
@@ -239,6 +260,7 @@ def get_youtube_cookiefile() -> str | None:
             tmp_path = os.path.join(get_download_dir(), "yt_cookies.txt")
             with open(tmp_path, "w", encoding="utf-8") as f:
                 f.write(norm_content)
+            print(f"[audio_processor] Prepared YOUTUBE_COOKIES to {tmp_path}")
             return tmp_path
         except Exception as e:
             print(f"[audio_processor] Warning: Failed to process YOUTUBE_COOKIES: {e}")
@@ -333,8 +355,11 @@ def extract_youtube_subtitles(url: str, cookie_file: str | None = None) -> str |
         "fragment_retries": 2,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "web", "mweb"]
+                "player_client": ["ios", "android", "web"]
             }
+        },
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
         }
     }
     if bin_path and os.path.exists(bin_path):
@@ -405,9 +430,11 @@ def extract_youtube_subtitles(url: str, cookie_file: str | None = None) -> str |
     return None
 
 
-def _build_ydl_opts(output_template: str, player_clients: list | None, cookie_file: str | None = None) -> dict:
+def _build_ydl_opts(output_template: str, player_clients: list | None = None, cookie_file: str | None = None) -> dict:
     """
     Constructs robust yt-dlp options with:
+    - Fallback player clients: ['ios', 'android', 'web'] to bypass datacenter player response blocks.
+    - Custom modern User-Agent headers.
     - Broad format selector: allows 360p/480p MP4 if YouTube omits pure audio URLs (SABR experiment).
     - JavaScript runtime detection (Deno/Node.js) to solve YouTube challenge signatures.
     - Explicit FFmpeg location and extraction to 16kHz mono WAV.
@@ -416,15 +443,22 @@ def _build_ydl_opts(output_template: str, player_clients: list | None, cookie_fi
     js_runtimes = get_js_runtimes()
     bin_path, _ = ensure_ffmpeg()
 
+    target_clients = player_clients if player_clients is not None else ["ios", "android", "web"]
+
     opts = {
         "format": "bestaudio/ba/b[ext=mp4]/b[height<=480]/18/best",
         "outtmpl": output_template,
         "noplaylist": True,
-        "socket_timeout": 15,
-        "retries": 2,
-        "fragment_retries": 2,
+        "socket_timeout": 20,
+        "retries": 3,
+        "fragment_retries": 3,
         "file_access_retries": 2,
-        "extractor_retries": 2,
+        "extractor_retries": 3,
+        "extractor_args": {
+            "youtube": {
+                "player_client": target_clients
+            }
+        },
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -439,19 +473,15 @@ def _build_ydl_opts(output_template: str, player_clients: list | None, cookie_fi
         "quiet": False,
         "no_warnings": False,
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Sec-Fetch-Mode": "navigate"
         }
     }
     if bin_path and os.path.exists(bin_path):
         opts["ffmpeg_location"] = os.path.dirname(bin_path) or bin_path
     if js_runtimes:
         opts["js_runtimes"] = js_runtimes
-    if player_clients:
-        opts["extractor_args"] = {
-            "youtube": {
-                "player_client": player_clients
-            }
-        }
     if cookie_file and os.path.exists(cookie_file):
         opts["cookiefile"] = cookie_file
     return opts
@@ -461,22 +491,22 @@ def download_youtube_audio(url: str, progress_callback=None) -> str:
     """
     Downloads audio from a YouTube URL.
     Cycles through robust client strategies using real Innertube clients:
-    1. android (reliable mobile API, most resilient against cloud datacenter blocks)
-    2. web_embedded & mweb (embedded player client)
-    3. ios (Apple client)
+    1. ios, android, web (iOS player API first, then android & web fallback in single query)
+    2. ios, mweb, web (mobile web fallback)
+    3. web_embedded, ios (embedded player client)
     4. default yt-dlp selection
     """
     downloads_dir = get_download_dir()
     output_template = os.path.join(downloads_dir, "%(id)s.%(ext)s")
     cookie_file = get_youtube_cookiefile()
     if cookie_file:
-        print("[audio_processor] Authenticated YouTube session detected (cookiefile enabled).")
+        print(f"[audio_processor] Authenticated YouTube session detected ({cookie_file}).")
 
     client_strategies = [
-        ["android"],
-        ["web_embedded", "mweb"],
-        ["ios"],
-        None  # Default yt-dlp client selection
+        ["ios", "android", "web"],       # Primary: iOS player API first, then android & web fallback
+        ["ios", "mweb", "web"],          # Mobile web fallback
+        ["web_embedded", "ios"],         # Embedded player client
+        None                             # Default yt-dlp selection
     ]
 
     last_error = None
@@ -545,11 +575,12 @@ def download_youtube_audio(url: str, progress_callback=None) -> str:
 
     # If both audio download and captions were blocked
     err_lower = (last_error or "").lower()
-    if "sign in to confirm you're not a bot" in err_lower or "bot" in err_lower or "403" in err_lower:
+    if "sign in to confirm you're not a bot" in err_lower or "bot" in err_lower or "403" in err_lower or "player response" in err_lower:
         raise RuntimeError(
-            "YouTube has restricted direct media streaming from Render's datacenter IP and no public captions were found. "
-            "To solve this: 1) Add your YouTube cookies via the YOUTUBE_COOKIES environment variable in Render, "
-            "or 2) Upload your audio/video file directly using 'Upload Audio / Video'."
+            "YouTube has blocked player response extraction from Render's cloud IP and no public captions were found. "
+            "To solve this: 1) Add your YouTube cookies to Render as a Secret File (/etc/secrets/cookies.txt) "
+            "or via the YOUTUBE_COOKIES environment variable (see .env.example), "
+            "or 2) Upload your video/audio file directly via 'Upload Audio / Video'."
         )
     elif "private video" in err_lower or "video unavailable" in err_lower:
         raise RuntimeError(f"YouTube video is private or unavailable: {last_error}")

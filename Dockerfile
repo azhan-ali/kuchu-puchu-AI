@@ -35,10 +35,10 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # Pre-install CPU-only PyTorch and torchaudio to prevent pulling multi-GB CUDA binaries
 RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
-# Install project Python dependencies and ensure latest yt-dlp with default extras and static-ffmpeg are installed
+# Install project Python dependencies and ensure the latest release of yt-dlp is always installed
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir --upgrade "yt-dlp[default]" yt-dlp-ejs static-ffmpeg
+    && pip install --no-cache-dir --upgrade --force-reinstall "yt-dlp[default]" yt-dlp-ejs static-ffmpeg
 
 # Verify FFmpeg and FFprobe system executables
 RUN ffmpeg -version && ffprobe -version

@@ -43,8 +43,9 @@ python -m pip install --no-cache-dir --upgrade pip setuptools wheel
 # 4. Install PyTorch CPU-only wheel
 python -m pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
-# 5. Install project dependencies and static-ffmpeg fallback
+# 5. Install project dependencies and ensure latest release of yt-dlp is installed
 python -m pip install --no-cache-dir -r requirements.txt
-python -m pip install --no-cache-dir --upgrade "yt-dlp[default]" yt-dlp-ejs static-ffmpeg
+python -m pip install --no-cache-dir --upgrade --force-reinstall "yt-dlp[default]" yt-dlp-ejs static-ffmpeg
 
 echo "=== [render-build] Build Complete ==="
+
