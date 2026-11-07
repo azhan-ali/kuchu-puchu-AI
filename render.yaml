@@ -17,6 +17,10 @@ services:
         value: 10000
       - key: ENVIRONMENT
         value: production
+      - key: DOWNLOAD_DIR
+        value: /tmp/downloads
+      - key: CHROMA_PERSIST_DIR
+        value: /tmp/vector_db
       - key: WHISPER_MODEL
         value: base # Use 'base' or 'tiny' to stay safely within Render free tier 512MB RAM
       - key: GROQ_WHISPER_MODEL

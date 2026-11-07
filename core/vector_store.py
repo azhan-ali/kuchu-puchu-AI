@@ -18,8 +18,19 @@ except ImportError:
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
-CHROMA_DIR = os.getenv("CHROMA_PERSIST_DIR", "vector_db")
-os.makedirs(CHROMA_DIR, exist_ok=True)
+def get_chroma_dir() -> str:
+    configured = os.getenv("CHROMA_PERSIST_DIR")
+    if configured:
+        os.makedirs(configured, exist_ok=True)
+        return configured
+    if os.name != "nt" or os.getenv("RENDER") or os.getenv("ENVIRONMENT") == "production":
+        d = "/tmp/vector_db"
+    else:
+        d = os.path.abspath("vector_db")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+CHROMA_DIR = get_chroma_dir()
 COLLECTION_NAME = "meeting_transcript"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 

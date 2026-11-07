@@ -14,6 +14,7 @@ youtube-transcript-api>=1.2.4         # Direct timedtext captions extraction (fa
 pydub>=0.25.1                         # Audio file manipulation & format conversion
 ffmpeg-python>=0.2.0                  # FFmpeg bindings (FFmpeg binary required on system)
 imageio-ffmpeg>=0.5.1                 # Fallback static FFmpeg binary
+static-ffmpeg>=2.5                    # Bundled static FFmpeg & FFprobe binaries for cloud environments
 
 # ── Speech-to-Text ────────────────────────────────────────────────────────────
 openai-whisper>=20231117          # OpenAI Whisper (local STT)

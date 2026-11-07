@@ -10,7 +10,10 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=8000 \
     HOST=0.0.0.0 \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    DOWNLOAD_DIR=/tmp/downloads \
+    CHROMA_PERSIST_DIR=/tmp/vector_db \
+    PATH="/tmp/bin:/usr/local/bin:$PATH"
 
 WORKDIR /app
 
@@ -32,16 +35,20 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # Pre-install CPU-only PyTorch and torchaudio to prevent pulling multi-GB CUDA binaries
 RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
-# Install project Python dependencies and ensure latest yt-dlp with default extras is installed
+# Install project Python dependencies and ensure latest yt-dlp with default extras and static-ffmpeg are installed
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir --upgrade "yt-dlp[default]" yt-dlp-ejs
+    && pip install --no-cache-dir --upgrade "yt-dlp[default]" yt-dlp-ejs static-ffmpeg
+
+# Verify FFmpeg and FFprobe system executables
+RUN ffmpeg -version && ffprobe -version
 
 # Copy application source code
 COPY . .
 
-# Create persistent/runtime directories
-RUN mkdir -p downloads vector_db
+# Create persistent/runtime directories in workspace and temporary storage
+RUN mkdir -p /tmp/downloads /tmp/vector_db /tmp/bin downloads vector_db \
+    && chmod -R 777 /tmp/downloads /tmp/vector_db /tmp/bin || true
 
 # Expose default port
 EXPOSE 8000

@@ -5,33 +5,133 @@ import subprocess
 import shutil
 import json
 import base64
+import tempfile
+import concurrent.futures
 import requests
 import yt_dlp
 from pydub import AudioSegment
 
-# Configurable downloads directory
-DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "downloads")
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-def get_ffmpeg_binary() -> str:
-    """Find FFmpeg executable from PATH, imageio_ffmpeg, or common system locations."""
-    exe = shutil.which("ffmpeg")
-    if exe:
-        return exe
+def get_download_dir() -> str:
+    """
+    Returns a valid, writable directory for temporary media downloads and audio chunks.
+    On Render, containers, or POSIX systems, /tmp is always writable.
+    """
+    configured = os.getenv("DOWNLOAD_DIR")
+    if configured:
+        os.makedirs(configured, exist_ok=True)
+        return configured
+    if os.name != "nt" or os.getenv("RENDER") or os.getenv("ENVIRONMENT") == "production":
+        d = "/tmp/downloads"
+    else:
+        d = os.path.join(os.getcwd(), "downloads")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+DOWNLOAD_DIR = get_download_dir()
+
+
+def ensure_ffmpeg() -> tuple[str, str]:
+    """
+    Ensures that ffmpeg and ffprobe are available, executable, and in PATH.
+    Configures pydub and returns (ffmpeg_path, ffprobe_path).
+    Supports Docker, Render native Python, Linux, macOS, and Windows.
+    """
+    # 1. Try static_ffmpeg package if installed (auto-downloads binaries for current OS)
     try:
-        import imageio_ffmpeg
-        return imageio_ffmpeg.get_ffmpeg_exe()
+        import static_ffmpeg
+        static_ffmpeg.add_paths()
     except Exception:
         pass
-    for p in ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/opt/homebrew/bin/ffmpeg"]:
-        if os.path.exists(p):
-            return p
-    return "ffmpeg"
 
-# Ensure pydub uses the resolved FFmpeg binary
-ffmpeg_exe = get_ffmpeg_binary()
-if ffmpeg_exe and ffmpeg_exe != "ffmpeg":
-    AudioSegment.converter = ffmpeg_exe
+    # 2. Check and prepend standard Render and Linux binary directories
+    search_dirs = [
+        os.path.join(os.getenv("RENDER_PROJECT_DIR", "/opt/render/project"), ".render", "bin"),
+        "/opt/render/project/.render/bin",
+        "/tmp/bin",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/opt/homebrew/bin"
+    ]
+    cur_path = os.environ.get("PATH", "")
+    for d in search_dirs:
+        if os.path.isdir(d) and d not in cur_path:
+            os.environ["PATH"] = d + os.pathsep + os.environ["PATH"]
+
+    ffmpeg_bin = shutil.which("ffmpeg")
+    ffprobe_bin = shutil.which("ffprobe")
+
+    # 3. If either binary is missing, attempt imageio_ffmpeg fallback with shim wrappers
+    if not (ffmpeg_bin and ffprobe_bin):
+        try:
+            import imageio_ffmpeg
+            img_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            if img_exe and os.path.exists(img_exe):
+                if os.name != "nt":
+                    try:
+                        st = os.stat(img_exe)
+                        os.chmod(img_exe, st.st_mode | 0o111)
+                    except Exception:
+                        pass
+
+                shim_dir = os.path.join(tempfile.gettempdir(), "kuchu_bin")
+                os.makedirs(shim_dir, exist_ok=True)
+                ext = ".exe" if os.name == "nt" else ""
+                shim_ffmpeg = os.path.join(shim_dir, "ffmpeg" + ext)
+                shim_ffprobe = os.path.join(shim_dir, "ffprobe" + ext)
+
+                if not os.path.exists(shim_ffmpeg):
+                    try:
+                        if hasattr(os, "symlink") and os.name != "nt":
+                            os.symlink(img_exe, shim_ffmpeg)
+                        else:
+                            shutil.copy2(img_exe, shim_ffmpeg)
+                    except Exception:
+                        pass
+
+                if not os.path.exists(shim_ffprobe):
+                    try:
+                        if hasattr(os, "symlink") and os.name != "nt":
+                            os.symlink(img_exe, shim_ffprobe)
+                        else:
+                            shutil.copy2(img_exe, shim_ffprobe)
+                    except Exception:
+                        pass
+
+                if shim_dir not in os.environ.get("PATH", ""):
+                    os.environ["PATH"] = shim_dir + os.pathsep + os.environ.get("PATH", "")
+
+                if not ffmpeg_bin:
+                    ffmpeg_bin = shutil.which("ffmpeg") or shim_ffmpeg
+                if not ffprobe_bin:
+                    ffprobe_bin = shutil.which("ffprobe") or shim_ffprobe
+        except Exception as e:
+            print(f"[audio_processor] Notice during imageio_ffmpeg discovery: {e}")
+
+    # Fallback strings if still unresolved
+    if not ffmpeg_bin:
+        ffmpeg_bin = "ffmpeg"
+    if not ffprobe_bin:
+        ffprobe_bin = "ffprobe"
+
+    # Configure pydub global settings
+    AudioSegment.converter = ffmpeg_bin
+    AudioSegment.ffmpeg = ffmpeg_bin
+    AudioSegment.prober = ffprobe_bin
+
+    return ffmpeg_bin, ffprobe_bin
+
+
+def get_ffmpeg_binary() -> str:
+    """Find FFmpeg executable via ensure_ffmpeg()."""
+    ffmpeg_bin, _ = ensure_ffmpeg()
+    return ffmpeg_bin
+
+
+# Initialize and resolve binaries at module import
+ffmpeg_exe, ffprobe_exe = ensure_ffmpeg()
 
 
 def get_js_runtimes() -> dict:
@@ -125,7 +225,7 @@ def get_youtube_cookiefile() -> str | None:
         try:
             decoded = base64.b64decode(b64_cookies.strip()).decode("utf-8", errors="replace")
             norm_content = normalize_cookie_text(decoded)
-            tmp_path = os.path.join(DOWNLOAD_DIR, "yt_cookies.txt")
+            tmp_path = os.path.join(get_download_dir(), "yt_cookies.txt")
             with open(tmp_path, "w", encoding="utf-8") as f:
                 f.write(norm_content)
             return tmp_path
@@ -136,7 +236,7 @@ def get_youtube_cookiefile() -> str | None:
     if raw_cookies and raw_cookies.strip():
         try:
             norm_content = normalize_cookie_text(raw_cookies)
-            tmp_path = os.path.join(DOWNLOAD_DIR, "yt_cookies.txt")
+            tmp_path = os.path.join(get_download_dir(), "yt_cookies.txt")
             with open(tmp_path, "w", encoding="utf-8") as f:
                 f.write(norm_content)
             return tmp_path
@@ -169,13 +269,14 @@ def extract_youtube_subtitles(url: str, cookie_file: str | None = None) -> str |
     """
     Fetches official or auto-generated YouTube captions directly.
     1. Primary method: YouTubeTranscriptApi (pure HTTP, zero media download, immune to datacenter blocks)
-    2. Fallback method: yt-dlp timedtext scraping
+       Protected with a 10s timeout to prevent hanging on blocked datacenter IPs.
+    2. Fallback method: yt-dlp timedtext scraping with fast socket timeouts.
     """
     video_id = extract_youtube_video_id(url)
     
-    # ── Strategy 1: YouTubeTranscriptApi (Fastest, immune to player response crashes) ──
+    # ── Strategy 1: YouTubeTranscriptApi (Fastest, pure HTTP) ──
     if video_id:
-        try:
+        def _fetch_transcript():
             from youtube_transcript_api import YouTubeTranscriptApi
             api = YouTubeTranscriptApi()
             transcript_list = api.list(video_id)
@@ -185,6 +286,13 @@ def extract_youtube_subtitles(url: str, cookie_file: str | None = None) -> str |
                 transcript = transcript_list.find_transcript(['en', 'en-US', 'en-GB', 'hi', 'hi-Latn'])
             except Exception:
                 for t in transcript_list:
+                    # Prefer translatable to English if available
+                    if getattr(t, "is_translatable", False):
+                        try:
+                            transcript = t.translate('en')
+                            break
+                        except Exception:
+                            pass
                     transcript = t
                     break
 
@@ -195,13 +303,24 @@ def extract_youtube_subtitles(url: str, cookie_file: str | None = None) -> str |
                     text_snippets.append(getattr(s, 'text', '') if hasattr(s, 'text') else (s.get('text', '') if isinstance(s, dict) else str(s)))
                 full_text = " ".join(text_snippets).strip()
                 if full_text:
-                    print(f"[audio_processor] Direct transcript extracted via YouTubeTranscriptApi ({len(full_text)} chars).")
                     return full_text
+            return None
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_fetch_transcript)
+                result = future.result(timeout=10.0)
+                if result:
+                    print(f"[audio_processor] Direct transcript extracted via YouTubeTranscriptApi ({len(result)} chars).")
+                    return result
+        except concurrent.futures.TimeoutError:
+            print("[audio_processor] YouTubeTranscriptApi timed out after 10s, proceeding to fallback.")
         except Exception as e:
             print(f"[audio_processor] YouTubeTranscriptApi notice: {e}")
 
     # ── Strategy 2: yt-dlp timedtext metadata fallback ──────────────────────
     js_runtimes = get_js_runtimes()
+    bin_path, _ = ensure_ffmpeg()
 
     opts = {
         "skip_download": True,
@@ -209,12 +328,17 @@ def extract_youtube_subtitles(url: str, cookie_file: str | None = None) -> str |
         "writeautomaticsub": True,
         "quiet": True,
         "no_warnings": True,
+        "socket_timeout": 15,
+        "retries": 2,
+        "fragment_retries": 2,
         "extractor_args": {
             "youtube": {
                 "player_client": ["android", "web", "mweb"]
             }
         }
     }
+    if bin_path and os.path.exists(bin_path):
+        opts["ffmpeg_location"] = os.path.dirname(bin_path) or bin_path
     if js_runtimes:
         opts["js_runtimes"] = js_runtimes
     if cookie_file and os.path.exists(cookie_file):
@@ -257,7 +381,7 @@ def extract_youtube_subtitles(url: str, cookie_file: str | None = None) -> str |
             if not sub_url:
                 return None
 
-            resp = requests.get(sub_url, timeout=12)
+            resp = requests.get(sub_url, timeout=10)
             if resp.status_code == 200:
                 if json_fmt.get("ext") == "json3":
                     data = resp.json()
@@ -286,15 +410,21 @@ def _build_ydl_opts(output_template: str, player_clients: list | None, cookie_fi
     Constructs robust yt-dlp options with:
     - Broad format selector: allows 360p/480p MP4 if YouTube omits pure audio URLs (SABR experiment).
     - JavaScript runtime detection (Deno/Node.js) to solve YouTube challenge signatures.
-    - Automatic FFmpeg extraction to 16kHz mono WAV.
+    - Explicit FFmpeg location and extraction to 16kHz mono WAV.
+    - Strict network timeouts to prevent hanging on datacenter rate limits.
     """
     js_runtimes = get_js_runtimes()
+    bin_path, _ = ensure_ffmpeg()
 
     opts = {
-        # If pure audio (bestaudio/ba) has omitted URLs, fall back to composite MP4 (format 18)
         "format": "bestaudio/ba/b[ext=mp4]/b[height<=480]/18/best",
         "outtmpl": output_template,
         "noplaylist": True,
+        "socket_timeout": 15,
+        "retries": 2,
+        "fragment_retries": 2,
+        "file_access_retries": 2,
+        "extractor_retries": 2,
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -312,6 +442,8 @@ def _build_ydl_opts(output_template: str, player_clients: list | None, cookie_fi
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         }
     }
+    if bin_path and os.path.exists(bin_path):
+        opts["ffmpeg_location"] = os.path.dirname(bin_path) or bin_path
     if js_runtimes:
         opts["js_runtimes"] = js_runtimes
     if player_clients:
@@ -325,29 +457,25 @@ def _build_ydl_opts(output_template: str, player_clients: list | None, cookie_fi
     return opts
 
 
-def download_youtube_audio(url: str) -> str:
+def download_youtube_audio(url: str, progress_callback=None) -> str:
     """
     Downloads audio from a YouTube URL.
     Cycles through robust client strategies using real Innertube clients:
-    1. android (reliable mobile API)
-    2. web_embedded (designed for embed players without strict bot-gating)
-    3. mweb (mobile web player)
-    4. ios (iOS app client)
-    5. web (standard web player with EJS challenge solver)
-    6. default yt-dlp selection
+    1. android (reliable mobile API, most resilient against cloud datacenter blocks)
+    2. web_embedded & mweb (embedded player client)
+    3. ios (Apple client)
+    4. default yt-dlp selection
     """
-    output_template = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
+    downloads_dir = get_download_dir()
+    output_template = os.path.join(downloads_dir, "%(id)s.%(ext)s")
     cookie_file = get_youtube_cookiefile()
     if cookie_file:
         print("[audio_processor] Authenticated YouTube session detected (cookiefile enabled).")
 
-    # Client strategies using valid yt-dlp INNERTUBE_CLIENTS
     client_strategies = [
         ["android"],
-        ["web_embedded"],
-        ["mweb"],
+        ["web_embedded", "mweb"],
         ["ios"],
-        ["web"],
         None  # Default yt-dlp client selection
     ]
 
@@ -355,6 +483,8 @@ def download_youtube_audio(url: str) -> str:
 
     for attempt_idx, clients in enumerate(client_strategies):
         desc = clients if clients else "default yt-dlp"
+        if progress_callback:
+            progress_callback(f"Downloading YouTube audio with {desc[0] if isinstance(clients, list) else 'standard'} client...", 11)
         print(f"[audio_processor] Attempting YouTube extraction using clients: {desc} (attempt {attempt_idx + 1}/{len(client_strategies)})...")
         ydl_opts = _build_ydl_opts(output_template, clients, cookie_file)
 
@@ -370,8 +500,8 @@ def download_youtube_audio(url: str) -> str:
                 if not os.path.exists(filename) or os.path.getsize(filename) == 0:
                     vid_id = info.get("id", "")
                     found = None
-                    for f in os.listdir(DOWNLOAD_DIR):
-                        f_path = os.path.join(DOWNLOAD_DIR, f)
+                    for f in os.listdir(downloads_dir):
+                        f_path = os.path.join(downloads_dir, f)
                         if (vid_id in f or os.path.basename(base) in f) and os.path.getsize(f_path) > 0:
                             if f.endswith(".wav"):
                                 found = f_path
@@ -401,11 +531,13 @@ def download_youtube_audio(url: str) -> str:
 
     # If all audio download strategies failed, try direct subtitle/caption extraction fallback
     print("[audio_processor] Audio stream download restricted. Attempting direct YouTube captions fallback...")
+    if progress_callback:
+        progress_callback("Audio stream restricted. Attempting direct YouTube captions fallback...", 11)
     direct_transcript = extract_youtube_subtitles(url, cookie_file)
     if direct_transcript:
         import hashlib
         h = hashlib.md5(url.encode()).hexdigest()[:8]
-        transcript_file = os.path.join(DOWNLOAD_DIR, f"yt_{h}_transcript.txt")
+        transcript_file = os.path.join(downloads_dir, f"yt_{h}_transcript.txt")
         with open(transcript_file, "w", encoding="utf-8") as f:
             f.write(direct_transcript)
         print(f"[audio_processor] Direct transcript successfully saved to {transcript_file}.")
@@ -415,46 +547,71 @@ def download_youtube_audio(url: str) -> str:
     err_lower = (last_error or "").lower()
     if "sign in to confirm you're not a bot" in err_lower or "bot" in err_lower or "403" in err_lower:
         raise RuntimeError(
-            "YouTube has flagged this datacenter IP for bot verification and no public captions were found. "
-            "To solve this: 1) Add your YouTube cookies to Railway via the YOUTUBE_COOKIES environment variable (see .env.example), "
-            "or 2) Upload your video/audio file directly via 'Upload Audio / Video'."
+            "YouTube has restricted direct media streaming from Render's datacenter IP and no public captions were found. "
+            "To solve this: 1) Add your YouTube cookies via the YOUTUBE_COOKIES environment variable in Render, "
+            "or 2) Upload your audio/video file directly using 'Upload Audio / Video'."
         )
     elif "private video" in err_lower or "video unavailable" in err_lower:
         raise RuntimeError(f"YouTube video is private or unavailable: {last_error}")
     raise RuntimeError(f"YouTube extraction failed: {last_error}")
 
 
-def convert_to_wav(input_path: str) -> str:
-    """Convert any audio/video file to 16kHz mono WAV using direct FFmpeg with pydub fallback."""
+def convert_to_wav(input_path: str, progress_callback=None) -> str:
+    """
+    Convert any audio/video file to 16kHz mono WAV using direct FFmpeg with pydub fallback.
+    Uses -nostdin and stdin=subprocess.DEVNULL to prevent hangs in headless server environments.
+    """
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input file not found: {input_path}")
-        
-    output_path = os.path.splitext(input_path)[0] + "_converted.wav"
-    bin_path = get_ffmpeg_binary()
-    
-    # Fast path: use ffmpeg directly (bypasses Python memory overhead and runs in <1s)
-    try:
-        cmd = [
-            bin_path, "-y", "-v", "error",
-            "-i", input_path,
-            "-vn",
-            "-acodec", "pcm_s16le",
-            "-ar", "16000",
-            "-ac", "1",
-            output_path
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            print(f"[audio_processor] Direct FFmpeg conversion succeeded: {output_path}")
-            return output_path
-    except Exception as e:
-        print(f"[audio_processor] Direct FFmpeg conversion notice: {e}, falling back to pydub...")
+
+    downloads_dir = get_download_dir()
+    base_name = os.path.splitext(os.path.basename(input_path))[0]
+    output_path = os.path.join(downloads_dir, f"{base_name}_converted.wav")
+
+    bin_path, _ = ensure_ffmpeg()
+
+    if progress_callback:
+        progress_callback("Converting media to 16kHz audio track with FFmpeg...", 11)
+
+    # Fast path: use ffmpeg directly (bypasses Python memory overhead and completes in <1s)
+    if bin_path:
+        try:
+            cmd = [
+                bin_path, "-y", "-nostdin", "-v", "error",
+                "-i", input_path,
+                "-vn",
+                "-acodec", "pcm_s16le",
+                "-ar", "16000",
+                "-ac", "1",
+                output_path
+            ]
+            subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=True
+            )
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                print(f"[audio_processor] Direct FFmpeg conversion succeeded: {output_path}")
+                return output_path
+        except subprocess.TimeoutExpired:
+            print(f"[audio_processor] Direct FFmpeg conversion timed out after 120s for {input_path}")
+        except Exception as e:
+            print(f"[audio_processor] Direct FFmpeg conversion notice: {e}, falling back to pydub...")
 
     # Fallback to pydub if direct ffmpeg fails
-    audio = AudioSegment.from_file(input_path)
-    audio = audio.set_channels(1).set_frame_rate(16000)
-    audio.export(output_path, format="wav")
-    return output_path
+    try:
+        audio = AudioSegment.from_file(input_path)
+        audio = audio.set_channels(1).set_frame_rate(16000)
+        audio.export(output_path, format="wav")
+        return output_path
+    except Exception as pe:
+        raise RuntimeError(
+            f"Failed to convert media file to 16kHz WAV format: {pe}. "
+            "Please ensure ffmpeg is installed or upload an uncompressed WAV or standard MP3 file."
+        )
 
 
 def get_audio_duration_seconds(wav_path: str) -> float:
@@ -473,21 +630,66 @@ def get_audio_duration_seconds(wav_path: str) -> float:
         return 0.0
 
 
-def chunk_audio(wav_path: str, chunk_minutes: int = 10) -> list:
+def chunk_audio(wav_path: str, chunk_minutes: int = 10, progress_callback=None) -> list:
     """
-    Chunk audio if it exceeds the chunk limit (default 10 min ~18MB to ensure safe <24MB API payloads);
+    Chunk audio if it exceeds chunk limit (default 10 min ~18MB for 16kHz mono WAV);
     otherwise return original file.
+    Uses fast direct FFmpeg stream copy to avoid memory bloat on 512MB RAM servers.
     """
     duration_sec = get_audio_duration_seconds(wav_path)
     chunk_limit_sec = chunk_minutes * 60
 
-    # If within chunk limit and file size is safe (<24MB), return original file
     file_size_mb = os.path.getsize(wav_path) / (1024 * 1024) if os.path.exists(wav_path) else 0
     if duration_sec > 0 and duration_sec <= chunk_limit_sec and file_size_mb < 24.0:
         print(f"[audio_processor] Audio duration is {duration_sec:.1f}s, size {file_size_mb:.1f}MB. Single chunk used.")
         return [wav_path]
 
     print(f"[audio_processor] Audio duration is {duration_sec:.1f}s ({file_size_mb:.1f}MB). Slicing into {chunk_minutes}-min chunks...")
+    if progress_callback:
+        progress_callback(f"Audio is {duration_sec / 60:.1f}m long. Slicing into {chunk_minutes}-min chunks...", 11)
+
+    bin_path, _ = ensure_ffmpeg()
+    chunk_sec = chunk_minutes * 60
+    chunks = []
+
+    # Fast path: use direct FFmpeg stream copy slicing (takes ~0.05s, uses <5MB RAM, safe for Render free tier 512MB RAM)
+    if bin_path and duration_sec > 0:
+        try:
+            num_chunks = int(duration_sec // chunk_sec) + (1 if duration_sec % chunk_sec > 0 else 0)
+            for i in range(num_chunks):
+                start_s = i * chunk_sec
+                c_path = f"{wav_path}_chunk_{i}.wav"
+                cmd = [
+                    bin_path, "-y", "-nostdin", "-v", "error",
+                    "-ss", str(start_s),
+                    "-t", str(chunk_sec),
+                    "-i", wav_path,
+                    "-c", "copy",
+                    c_path
+                ]
+                subprocess.run(
+                    cmd,
+                    stdin=subprocess.DEVNULL,
+                    capture_output=True,
+                    timeout=60,
+                    check=True
+                )
+                if os.path.exists(c_path) and os.path.getsize(c_path) > 0:
+                    chunks.append(c_path)
+            if len(chunks) == num_chunks:
+                print(f"[audio_processor] Direct FFmpeg chunking created {len(chunks)} chunk(s).")
+                return chunks
+        except Exception as e:
+            print(f"[audio_processor] Direct FFmpeg chunking notice: {e}, falling back to pydub slicing...")
+            for c in chunks:
+                if os.path.exists(c):
+                    try:
+                        os.remove(c)
+                    except Exception:
+                        pass
+            chunks = []
+
+    # Fallback to pydub if direct FFmpeg slice wasn't used or failed
     audio = AudioSegment.from_wav(wav_path)
     chunk_ms = chunk_minutes * 60 * 1000
 
@@ -501,7 +703,7 @@ def chunk_audio(wav_path: str, chunk_minutes: int = 10) -> list:
     return chunks
 
 
-def process_input(source: str) -> list:
+def process_input(source: str, progress_callback=None) -> list:
     """
     Process input source (YouTube URL or uploaded media file).
     For YouTube URLs:
@@ -510,23 +712,32 @@ def process_input(source: str) -> list:
     """
     if source.startswith("http://") or source.startswith("https://"):
         print(f"[audio_processor] Processing remote URL source: {source}")
-        
+        if progress_callback:
+            progress_callback("Checking for direct YouTube captions / transcript...", 11)
+
         # Check direct captions first (completes in ~0.5s and bypasses datacenter blocks)
-        direct_transcript = extract_youtube_subtitles(source)
+        cookie_file = get_youtube_cookiefile()
+        direct_transcript = extract_youtube_subtitles(source, cookie_file)
         if direct_transcript:
             import hashlib
             h = hashlib.md5(source.encode()).hexdigest()[:8]
-            transcript_file = os.path.join(DOWNLOAD_DIR, f"yt_{h}_transcript.txt")
+            transcript_file = os.path.join(get_download_dir(), f"yt_{h}_transcript.txt")
             with open(transcript_file, "w", encoding="utf-8") as f:
                 f.write(direct_transcript)
             print(f"[audio_processor] Direct verified transcript saved: {transcript_file}")
+            if progress_callback:
+                progress_callback("Direct verified captions fetched from YouTube timedtext!", 11)
             return [transcript_file]
 
         # If direct captions not available, download audio streams
-        extracted_path = download_youtube_audio(source)
+        if progress_callback:
+            progress_callback("Downloading YouTube audio tracks with yt-dlp...", 11)
+        extracted_path = download_youtube_audio(source, progress_callback)
     else:
         print(f"[audio_processor] Processing local media upload: {source}")
-        extracted_path = convert_to_wav(source)
+        if progress_callback:
+            progress_callback("Extracting 16kHz audio track from uploaded media...", 11)
+        extracted_path = convert_to_wav(source, progress_callback)
 
     # If direct transcript file was returned from timedtext fallback
     if extracted_path.endswith(".txt"):
@@ -534,6 +745,8 @@ def process_input(source: str) -> list:
         return [extracted_path]
 
     print("[audio_processor] Checking audio duration and chunk limits...")
-    chunks = chunk_audio(extracted_path, chunk_minutes=10)
+    if progress_callback:
+        progress_callback("Preparing audio chunks for transcription...", 11)
+    chunks = chunk_audio(extracted_path, chunk_minutes=10, progress_callback=progress_callback)
     print(f"[audio_processor] Audio ready — {len(chunks)} chunk(s) prepared.")
     return chunks

@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import JSONResponse
 import sys
 import os
+import re
 import time
 import shutil
 import uuid
@@ -21,7 +22,7 @@ if hasattr(sys.stderr, "reconfigure"):
         pass
 
 # core imports
-from utils.audio_processor import process_input
+from utils.audio_processor import process_input, get_download_dir, ensure_ffmpeg
 from core.transcriber import transcribe_all, get_stt_engine_name
 from core.summarizer import summarize, generate_title
 from core.extractor import (
@@ -97,17 +98,22 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 @app.get("/api/health")
 async def health_check():
     import yt_dlp.version
-    from utils.audio_processor import get_js_runtimes, get_ffmpeg_binary
+    from utils.audio_processor import get_js_runtimes, ensure_ffmpeg, get_download_dir
 
+    ffmpeg_bin, ffprobe_bin = ensure_ffmpeg()
     runtimes = get_js_runtimes()
     return {
         "status": "healthy",
         "service": "Kuchu Puchu AI",
-        "version": "1.0.1",
+        "version": "1.0.2",
         "yt_dlp_version": getattr(yt_dlp.version, "__version__", "unknown"),
         "deno_available": "deno" in runtimes,
         "node_available": "node" in runtimes,
-        "ffmpeg_available": bool(get_ffmpeg_binary()),
+        "ffmpeg_available": bool(ffmpeg_bin),
+        "ffmpeg_path": ffmpeg_bin or "not found",
+        "ffprobe_available": bool(ffprobe_bin),
+        "ffprobe_path": ffprobe_bin or "not found",
+        "download_dir": get_download_dir(),
         "environment": os.environ.get("ENVIRONMENT", "production")
     }
 
@@ -158,14 +164,17 @@ async def process_media(
 ):
     source = ""
     if source_type == "url" and url:
-        source = url
+        source = url.strip()
     elif source_type == "file" and file:
-        downloads_dir = os.environ.get("DOWNLOAD_DIR", "downloads")
+        downloads_dir = get_download_dir()
         os.makedirs(downloads_dir, exist_ok=True)
-        safe_name = os.path.basename(file.filename or "uploaded_media").replace(" ", "_")
+        raw_name = file.filename or "uploaded_media"
+        safe_name = re.sub(r'[^a-zA-Z0-9_\.-]', '_', os.path.basename(raw_name))
         file_path = os.path.join(downloads_dir, f"{uuid.uuid4().hex[:8]}_{safe_name}")
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+        if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty or could not be saved.")
         source = file_path
     else:
         raise HTTPException(status_code=400, detail="Invalid source")
@@ -176,15 +185,43 @@ async def process_media(
     if is_streaming:
         async def event_generator():
             try:
-                # 1. Processing audio/video (fast FFmpeg extraction) with keep-alive pings
+                stage1_queue = asyncio.Queue()
+                loop = asyncio.get_running_loop()
+
+                def update_audio_progress(detail_msg: str, pct: int = 11):
+                    loop.call_soon_threadsafe(
+                        stage1_queue.put_nowait,
+                        {
+                            "stage_index": 1,
+                            "stage_id": "audio",
+                            "status": "processing",
+                            "title": STAGE_TITLES["audio"],
+                            "detail": detail_msg,
+                            "progress": pct
+                        }
+                    )
+
+                # 1. Processing audio/video (fast FFmpeg extraction) with real-time feedback and keep-alive pings
                 yield f"data: {json.dumps({'stage_index': 1, 'stage_id': 'audio', 'status': 'processing', 'title': STAGE_TITLES['audio'], 'detail': 'Extracting 16kHz audio tracks and preparing chunks...', 'progress': 11})}\n\n"
-                audio_task = asyncio.ensure_future(asyncio.to_thread(process_input, source))
-                while not audio_task.done():
+                audio_task = asyncio.ensure_future(asyncio.to_thread(process_input, source, update_audio_progress))
+
+                start_audio_time = time.time()
+                while not audio_task.done() or not stage1_queue.empty():
+                    if time.time() - start_audio_time > 180:
+                        raise TimeoutError(
+                            "Audio extraction timed out after 3 minutes. If submitting a long YouTube video, "
+                            "YouTube datacenter rate limits may be throttling downloads. Please try uploading your audio or video file directly."
+                        )
                     try:
-                        await asyncio.wait_for(asyncio.shield(audio_task), timeout=2.5)
-                        break
+                        if not stage1_queue.empty():
+                            evt = stage1_queue.get_nowait()
+                            yield f"data: {json.dumps(evt)}\n\n"
+                        else:
+                            await asyncio.wait_for(asyncio.shield(audio_task), timeout=2.5)
+                            break
                     except asyncio.TimeoutError:
                         yield ": ping\n\n"
+
                 chunks = await audio_task
                 is_direct_transcript = len(chunks) == 1 and str(chunks[0]).endswith(".txt")
                 if is_direct_transcript:
