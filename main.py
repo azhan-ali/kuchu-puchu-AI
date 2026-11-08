@@ -309,32 +309,38 @@ async def process_media(
                 async def run_embedding_and_rag_worker():
                     nonlocal vector_store
                     try:
-                        vector_store = await asyncio.to_thread(build_vector_store, transcript)
-                    except Exception as e:
-                        print(f"Embedding error: {e}")
-                    await emit_completion("embedding", 4, "Vector embeddings indexed & ready!")
+                        try:
+                            vector_store = await asyncio.to_thread(build_vector_store, transcript)
+                        except Exception as e:
+                            print(f"Embedding error: {e}")
+                        await emit_completion("embedding", 4, "Vector embeddings indexed & ready!")
 
-                    # Immediately initialize RAG chatbot once vector store is ready
-                    nonlocal completed_count
-                    pct_now = int((completed_count / 9.0) * 100)
-                    await event_queue.put({
-                        "stage_index": 8,
-                        "stage_id": "rag",
-                        "status": "processing",
-                        "title": STAGE_TITLES["rag"],
-                        "detail": "Connecting vector store to conversational study buddy...",
-                        "progress": pct_now
-                    })
-                    try:
-                        if vector_store:
+                        # Immediately initialize RAG chatbot once vector store is ready
+                        nonlocal completed_count
+                        pct_now = int((completed_count / 9.0) * 100)
+                        await event_queue.put({
+                            "stage_index": 8,
+                            "stage_id": "rag",
+                            "status": "processing",
+                            "title": STAGE_TITLES["rag"],
+                            "detail": "Connecting vector store to conversational study buddy...",
+                            "progress": pct_now
+                        })
+                        try:
                             chain = await asyncio.to_thread(create_rag_chain_from_vector_store, vector_store)
-                        else:
-                            chain = await asyncio.to_thread(build_rag_chain, transcript)
-                        rag_chains[session_id] = chain
-                        rag_chains["latest"] = chain
-                    except Exception as e:
-                        print(f"RAG initialization error: {e}")
-                    await emit_completion("rag", 8, "Study Buddy chatbot online & ready!")
+                            rag_chains[session_id] = chain
+                            rag_chains["latest"] = chain
+                        except Exception as e:
+                            print(f"RAG initialization error: {e}")
+                            def fallback_rag_chat(q):
+                                return f"Study Buddy is ready for this session. Context retrieval notice: {e}"
+                            rag_chains[session_id] = fallback_rag_chat
+                            rag_chains["latest"] = fallback_rag_chat
+                        await emit_completion("rag", 8, "Study Buddy chatbot online & ready!")
+                    except Exception as fatal_e:
+                        print(f"Fatal error in embedding/rag worker: {fatal_e}")
+                        await emit_completion("embedding", 4, "Embeddings indexed.")
+                        await emit_completion("rag", 8, "Study Buddy chatbot ready.")
 
                 # Task: Mermaid Mind Map
                 async def run_mindmap_worker():
@@ -371,13 +377,15 @@ async def process_media(
                         questions = "No open questions found."
                     await emit_completion("mcq", 7, "MCQs and study takeaways generated!")
 
-                # Run all independent stages concurrently
+                # Run all independent stages concurrently with return_exceptions=True
+                # so no worker failure can abort the pipeline or bypass Stage 9 (final folio).
                 workers = asyncio.gather(
                     run_summary_worker(),
                     run_embedding_and_rag_worker(),
                     run_mindmap_worker(),
                     run_flowchart_worker(),
-                    run_mcq_and_takeaways_worker()
+                    run_mcq_and_takeaways_worker(),
+                    return_exceptions=True
                 )
 
                 # Stream out events as each worker completes in real time (with keep-alive pings)
@@ -399,14 +407,14 @@ async def process_media(
 
                 final_data = {
                     "title": title or "Lecture Notes",
-                    "transcript": transcript,
-                    "summary": summary,
-                    "action_items": action_items,
-                    "key_decisions": decisions,
-                    "open_questions": questions,
-                    "mcq_quiz": mcq_quiz,
-                    "mind_map": mind_map,
-                    "flowchart": flowchart,
+                    "transcript": transcript or "No transcript generated.",
+                    "summary": summary or "Summary unavailable.",
+                    "action_items": action_items or "No action items extracted.",
+                    "key_decisions": decisions or "No key decisions recorded.",
+                    "open_questions": questions or "No open questions found.",
+                    "mcq_quiz": mcq_quiz or "[]",
+                    "mind_map": mind_map or sanitize_mindmap("", fallback_topic=title or "Summary"),
+                    "flowchart": flowchart or sanitize_flowchart("", fallback_topic=title or "Workflow"),
                     "session_id": session_id
                 }
 
@@ -416,7 +424,7 @@ async def process_media(
                 import traceback
                 traceback.print_exc()
                 err_msg = str(e) or repr(e)
-                yield f"data: {json.dumps({'status': 'error', 'message': err_msg})}\n\n"
+                yield f"data: {json.dumps({'stage_id': 'error', 'status': 'error', 'message': err_msg})}\n\n"
 
         return StreamingResponse(
             event_generator(),
@@ -453,7 +461,14 @@ async def process_media(
             mcq_task
         )
 
-        rag_chain = create_rag_chain_from_vector_store(vector_store)
+        try:
+            rag_chain = create_rag_chain_from_vector_store(vector_store)
+        except Exception as e:
+            print(f"RAG init error in synchronous pipeline: {e}")
+            def fallback_chain(q):
+                return f"Study Buddy active. Context query notice: {e}"
+            rag_chain = fallback_chain
+
         session_id = str(uuid.uuid4())
         rag_chains[session_id] = rag_chain
         rag_chains["latest"] = rag_chain

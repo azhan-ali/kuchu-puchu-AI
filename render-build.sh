@@ -10,8 +10,8 @@ echo "=== [render-build] Starting Kuchu Puchu AI Build on Render ==="
 # 1. Setup persistent storage/bin directory for static binaries
 BIN_DIR="${RENDER_PROJECT_DIR:-/opt/render/project}/.render/bin"
 mkdir -p "$BIN_DIR"
-mkdir -p /tmp/downloads /tmp/vector_db /tmp/bin
-chmod -R 777 /tmp/downloads /tmp/vector_db /tmp/bin || true
+mkdir -p /tmp/downloads /tmp/vector_db /tmp/chroma /tmp/bin
+chmod -R 777 /tmp/downloads /tmp/vector_db /tmp/chroma /tmp/bin || true
 
 # 2. Check if ffmpeg & ffprobe exist on PATH or in BIN_DIR
 if ! command -v ffmpeg &> /dev/null || ! command -v ffprobe &> /dev/null; then

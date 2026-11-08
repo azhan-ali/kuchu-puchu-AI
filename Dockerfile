@@ -47,8 +47,8 @@ RUN ffmpeg -version && ffprobe -version
 COPY . .
 
 # Create persistent/runtime directories in workspace and temporary storage
-RUN mkdir -p /tmp/downloads /tmp/vector_db /tmp/bin downloads vector_db \
-    && chmod -R 777 /tmp/downloads /tmp/vector_db /tmp/bin || true
+RUN mkdir -p /tmp/downloads /tmp/vector_db /tmp/chroma /tmp/bin downloads vector_db \
+    && chmod -R 777 /tmp/downloads /tmp/vector_db /tmp/chroma /tmp/bin || true
 
 # Expose default port
 EXPOSE 8000

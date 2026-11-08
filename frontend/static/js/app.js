@@ -558,6 +558,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Check if response is streaming SSE
                 const contentType = response.headers.get('content-type') || '';
                 let finalResultData = null;
+                let lastActiveStage = 'start';
+                let capturedStreamError = null;
 
                 if (contentType.includes('text/event-stream') && response.body) {
                     const reader = response.body.getReader();
@@ -578,7 +580,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             const lines = trimmed.split('\n');
                             for (const line of lines) {
-                                if (line.startsWith('data:')) {
+                                if (line.startsWith('data:') || line.startsWith('{')) {
                                     const jsonStr = line.replace(/^data:\s*/, '').trim();
                                     if (jsonStr) {
                                         let eventData = null;
@@ -590,6 +592,15 @@ document.addEventListener('DOMContentLoaded', () => {
                                         }
 
                                         if (eventData) {
+                                            if (eventData.stage_id) {
+                                                lastActiveStage = eventData.stage_id;
+                                            }
+                                            if (eventData.status === 'error' || eventData.stage_id === 'error') {
+                                                capturedStreamError = eventData.message || eventData.detail || 'Pipeline processing error';
+                                                try { reader.cancel(); } catch (_) {}
+                                                throw new Error(capturedStreamError);
+                                            }
+
                                             handlePipelineEvent(eventData);
 
                                             if (eventData.stage_id === 'final' && eventData.status === 'completed' && eventData.data) {
@@ -608,16 +619,22 @@ document.addEventListener('DOMContentLoaded', () => {
                         for (const block of trailingBlocks) {
                             const lines = block.trim().split('\n');
                             for (const line of lines) {
-                                if (line.startsWith('data:')) {
+                                if (line.startsWith('data:') || line.startsWith('{')) {
                                     const jsonStr = line.replace(/^data:\s*/, '').trim();
                                     if (jsonStr) {
                                         try {
                                             const eventData = JSON.parse(jsonStr);
+                                            if (eventData.stage_id) lastActiveStage = eventData.stage_id;
+                                            if (eventData.status === 'error' || eventData.stage_id === 'error') {
+                                                capturedStreamError = eventData.message || eventData.detail || 'Pipeline processing error';
+                                                throw new Error(capturedStreamError);
+                                            }
                                             handlePipelineEvent(eventData);
                                             if (eventData.stage_id === 'final' && eventData.status === 'completed' && eventData.data) {
                                                 finalResultData = eventData.data;
                                             }
                                         } catch (e) {
+                                            if (e.message && e.message === capturedStreamError) throw e;
                                             console.warn('Trailing buffer parse error:', e);
                                         }
                                     }
@@ -628,13 +645,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     // Fallback JSON response handling
                     finalResultData = await response.json();
+                    if (finalResultData && (finalResultData.status === 'error' || finalResultData.stage_id === 'error')) {
+                        throw new Error(finalResultData.message || finalResultData.detail || 'Pipeline processing error');
+                    }
                     Object.keys(STAGES_CONFIG).forEach(s => {
                         handlePipelineEvent({ stage_id: s, status: 'completed', progress: 100 });
                     });
                 }
 
                 if (!finalResultData) {
-                    throw new Error('Pipeline completed without returning folio data. Please check deployment logs or try again.');
+                    if (capturedStreamError) {
+                        throw new Error(capturedStreamError);
+                    }
+                    throw new Error(`Pipeline completed without returning folio data (last stop: ${lastActiveStage}). If running on Render free tier, the backend service may have restarted or timed out. Please check deployment logs or try again.`);
                 }
 
                 stopPipelineTimer();
